@@ -1,10 +1,10 @@
 Name:           libxkbcommon
-Version:        0.0.800
+Version:        0.3.0
 Release:        0
 License:        MIT
 Summary:        Wayland libxkbcommon library
 Url:            http://wayland.freedesktop.org/
-Group:          Development/Libraries/C and C++
+Group:          Development/Libraries
 
 #Git-Clone:	git://anongit.freedesktop.org/xorg/lib/libxkbcommon
 #Git-Web:	http://cgit.freedesktop.org/xorg/lib/libxkbcommon/
@@ -15,22 +15,20 @@ BuildRequires:  bison
 BuildRequires:  flex
 BuildRequires:  libtool >= 2
 BuildRequires:  pkgconfig
-BuildRequires:  xz
 BuildRequires:  pkgconfig(kbproto) >= 1.0.4
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
 BuildRequires:  pkgconfig(xproto)
-BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 
 %description
-(Upstream has not provided a description)
+Keyboard handling library using XKB data.
 
 %package devel
 Summary:        Development files for the Wayland libxkbcommon library
-Group:          Development/Libraries/C and C++
+Group:          Development/Libraries
 Requires:       %{name} = %{version}
 
 %description devel
-(Upstream has not provided a description)
+Keyboard handling library using XKB data.
 
 This package contains the development headers for the library found
 in %{name}.
@@ -39,7 +37,7 @@ in %{name}.
 %setup -qn %{name}
 
 %build
-autoreconf -fi;
+%autogen
 %configure --disable-static
 make %{?_smp_mflags} V=1;
 
@@ -52,6 +50,7 @@ make %{?_smp_mflags} V=1;
 
 %files
 %defattr(-,root,root)
+%license COPYING
 %{_libdir}/libxkbcommon.so.0*
 
 %files devel
