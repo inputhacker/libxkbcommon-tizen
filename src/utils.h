@@ -24,10 +24,8 @@
 #ifndef UTILS_H
 #define UTILS_H 1
 
-#include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 #include <strings.h>
 
@@ -92,12 +90,6 @@ memdup(const void *mem, size_t nmemb, size_t size)
         memcpy(p, mem, nmemb * size);
     return p;
 }
-
-bool
-map_file(FILE *file, const char **string_out, size_t *size_out);
-
-void
-unmap_file(const char *str, size_t size);
 
 #define ARRAY_SIZE(arr) ((sizeof(arr) / sizeof(*(arr))))
 

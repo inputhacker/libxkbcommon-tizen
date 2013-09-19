@@ -54,7 +54,7 @@ AC_C_INLINE
 # Check for programs
 AC_PROG_MKDIR_P
 PKG_PROG_PKG_CONFIG
-
+AC_PROG_LEX
 AC_PROG_YACC
 AC_PATH_PROG([YACC_INST], $YACC)
 if test ! -f "src/xkbcomp/parser.c"; then
@@ -70,7 +70,7 @@ if test "x$ac_cv_func_strcasecmp" = xno || \
     AC_MSG_ERROR([C library does not support strcasecmp/strncasecmp])
 fi
 
-AC_CHECK_FUNCS([eaccess euidaccess mmap])
+AC_CHECK_FUNCS([eaccess euidaccess])
 
 # Some tests use Linux-specific headers
 AC_CHECK_HEADER([linux/input.h])

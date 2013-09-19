@@ -47,10 +47,16 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <ctype.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "xkbcomp-priv.h"
 #include "rules.h"
 #include "include.h"
-#include "scanner-utils.h"
 
 /*
  * The rules file
@@ -132,6 +138,25 @@
 
 /* Scanner / Lexer */
 
+/* Point to some substring in the file; used to avoid copying. */
+struct sval {
+    const char *start;
+    unsigned int len;
+};
+typedef darray(struct sval) darray_sval;
+
+static inline bool
+svaleq(struct sval s1, struct sval s2)
+{
+    return s1.len == s2.len && strncmp(s1.start, s2.start, s1.len) == 0;
+}
+
+static inline bool
+svaleq_prefix(struct sval s1, struct sval s2)
+{
+    return s1.len <= s2.len && strncmp(s1.start, s2.start, s1.len) == 0;
+}
+
 /* Values returned with some tokens, like yylval. */
 union lvalue {
     struct sval string;
@@ -145,6 +170,15 @@ struct location {
     int line, column;
 };
 
+struct scanner {
+    const char *s;
+    size_t pos;
+    size_t len;
+    int line, column;
+    const char *file_name;
+    struct xkb_context *ctx;
+};
+
 enum rules_token {
     TOK_END_OF_FILE = 0,
     TOK_END_OF_LINE,
@@ -156,6 +190,18 @@ enum rules_token {
     TOK_ERROR
 };
 
+static void
+scanner_init(struct scanner *s, struct xkb_context *ctx,
+             const char *string, size_t len, const char *file_name)
+{
+    s->s = string;
+    s->len = len;
+    s->pos = 0;
+    s->line = s->column = 1;
+    s->file_name = file_name;
+    s->ctx = ctx;
+}
+
 /* C99 is stupid. Just use the 1 variant when there are no args. */
 #define scanner_error1(scanner, loc, msg) \
     log_warn(scanner->ctx, "rules/%s:%d:%d: " msg "\n", \
@@ -163,6 +209,61 @@ enum rules_token {
 #define scanner_error(scanner, loc, fmt, ...) \
     log_warn(scanner->ctx, "rules/%s:%d:%d: " fmt "\n", \
              scanner->file_name, loc->line, loc->column, __VA_ARGS__)
+
+static char
+peek(struct scanner *s)
+{
+    return s->pos < s->len ? s->s[s->pos] : '\0';
+}
+
+static bool
+eof(struct scanner *s)
+{
+    return peek(s) == '\0';
+}
+
+static bool
+eol(struct scanner *s)
+{
+    return peek(s) == '\n';
+}
+
+static char
+next(struct scanner *s)
+{
+    if (eof(s))
+        return '\0';
+    if (eol(s)) {
+        s->line++;
+        s->column = 1;
+    }
+    else {
+        s->column++;
+    }
+    return s->s[s->pos++];
+}
+
+static bool
+chr(struct scanner *s, char ch)
+{
+    if (peek(s) != ch)
+        return false;
+    s->pos++; s->column++;
+    return true;
+}
+
+static bool
+str(struct scanner *s, const char *string, size_t len)
+{
+    if (s->len - s->pos < len)
+        return false;
+    if (strncasecmp(s->s + s->pos, string, len) != 0)
+        return false;
+    s->pos += len; s->column += len;
+    return true;
+}
+
+#define lit(s, literal) str(s, literal, sizeof(literal) - 1)
 
 static enum rules_token
 lex(struct scanner *s, union lvalue *val, struct location *loc)
@@ -1092,27 +1193,36 @@ xkb_components_from_rules(struct xkb_context *ctx,
     bool ret = false;
     FILE *file;
     char *path;
-    const char *string;
-    size_t size;
+    int fd;
+    struct stat stat_buf;
+    char *string;
     struct matcher *matcher;
 
     file = FindFileInXkbPath(ctx, rmlvo->rules, FILE_TYPE_RULES, &path);
     if (!file)
         goto err_out;
 
-    ret = map_file(file, &string, &size);
-    if (!ret) {
-        log_err(ctx, "Couldn't read rules file: %s\n", strerror(errno));
+    fd = fileno(file);
+
+    if (fstat(fd, &stat_buf) != 0) {
+        log_err(ctx, "Couldn't stat rules file\n");
+        goto err_file;
+    }
+
+    string = mmap(NULL, stat_buf.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (string == MAP_FAILED) {
+        log_err(ctx, "Couldn't mmap rules file (%lld bytes)\n",
+                (long long) stat_buf.st_size);
         goto err_file;
     }
 
     matcher = matcher_new(ctx, rmlvo);
-    ret = matcher_match(matcher, string, size, rmlvo->rules, out);
+    ret = matcher_match(matcher, string, stat_buf.st_size, rmlvo->rules, out);
     if (!ret)
         log_err(ctx, "No components returned from XKB rules \"%s\"\n", path);
     matcher_free(matcher);
 
-    unmap_file(string, size);
+    munmap(string, stat_buf.st_size);
 err_file:
     free(path);
     fclose(file);
