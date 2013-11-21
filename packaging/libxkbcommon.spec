@@ -18,7 +18,7 @@ BuildRequires:  libtool >= 2
 BuildRequires:  pkgconfig
 BuildRequires:  pkgconfig(kbproto) >= 1.0.4
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
-BuildRequires:  pkgconfig(xproto)
+#BuildRequires:  pkgconfig(xproto)
 
 %description
 Keyboard handling library using XKB data.
