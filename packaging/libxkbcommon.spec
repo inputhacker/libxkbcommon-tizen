@@ -1,5 +1,5 @@
 Name:           libxkbcommon
-Version:        0.3.0
+Version:        0.4.1
 Release:        0
 License:        MIT
 Summary:        Wayland libxkbcommon library
@@ -40,7 +40,7 @@ cp %{SOURCE1001} .
 
 %build
 %autogen
-%configure --disable-static
+%autogen --disable-static
 make %{?_smp_mflags} V=1;
 
 %install
