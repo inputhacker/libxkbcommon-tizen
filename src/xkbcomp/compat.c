@@ -54,179 +54,6 @@
 #include "vmod.h"
 #include "include.h"
 
-/*
- * The xkb_compat section
- * =====================
- * This section is the third to be processed, after xkb_keycodes and
- * xkb_types.
- *
- * Interpret statements
- * --------------------
- * Statements of the form:
- *      interpret Num_Lock+Any { ... }
- *      interpret Shift_Lock+AnyOf(Shift+Lock) { ... }
- *
- * The xkb_symbols section (see symbols.c) allows the keymap author to do,
- * among other things, the following for each key:
- * - Bind an action, like SetMods or LockGroup, to the key. Actions, like
- *   symbols, are specified for each level of each group in the key
- *   separately.
- * - Add a virtual modifier to the key's virtual modifier mapping (vmodmap).
- * - Specify whether the key should repeat or not.
- *
- * However, doing this for each key (or level) is tedious and inflexible.
- * Interpret's are a mechanism to apply these settings to a bunch of
- * keys/levels at once.
- *
- * Each interpret specifies a condition by which it attaches to certain
- * levels. The condition consists of two parts:
- * - A keysym. If the level has a different (or more than one) keysym, the
- *   match failes. Leaving out the keysym is equivalent to using the
- *   NoSymbol keysym, which always matches successfully.
- * - A modifier predicate. The predicate consists of a matching operation
- *   and a mask of (real) modifiers. The modifers are matched against the
- *   key's modifier map (modmap). The matching operation can be one of the
- *   following:
- *   + AnyOfOrNone - The modmap must either be empty or include at least
- *     one of the specified modifiers.
- *   + AnyOf - The modmap must include at least one of the specified
- *     modifiers.
- *   + NoneOf - The modmap must not include any of the specified modifiers.
- *   + AllOf - The modmap must include all of the specified modifiers (but
- *     may include others as well).
- *   + Exactly - The modmap must be exactly the same as the specified
- *     modifiers.
- *   Leaving out the predicate is equivalent to usign AnyOfOrNone while
- *   specifying all modifiers. Leaving out just the matching condtition
- *   is equivalent to using Exactly.
- * An interpret may also include "useModMapMods = level1;" - see below.
- *
- * If a level fulfils the conditions of several interpret's, only the
- * most specific one is used:
- * - A specific keysym will always match before a generic NoSymbol
- *   condition.
- * - If the keysyms are the same, the interpret with the more specific
- *   matching operation is used. The above list is sorted from least to
- *   most specific.
- * - If both the keysyms and the matching operations are the same (but the
- *   modifiers are different), the first interpret is used.
- *
- * As described above, once an interpret "attaches" to a level, it can bind
- * an action to that level, add one virtual modifier to the key's vmodmap,
- * or set the key's repeat setting. You should note the following:
- * - The key repeat is a property of the entire key; it is not level-specific.
- *   In order to avoid confusion, it is only inspected for the first level of
- *   the first group; the interpret's repeat setting is ignored when applied
- *   to other levels.
- * - If one of the above fields was set directly for a key in xkb_symbols,
- *   the explicit setting takes precedence over the interpret.
- *
- * The body of the statment may include statements of the following
- * forms (all of which are optional):
- *
- * - useModMapMods statement:
- *      useModMapMods = level1;
- *
- *   When set to 'level1', the interpret will only match levels which are
- *   the first level of the first group of the keys. This can be useful in
- *   conjunction with e.g. a virtualModifier statement.
- *
- * - action statement:
- *      action = LockMods(modifiers=NumLock);
- *
- *   Bind this action to the matching levels.
- *
- * - virtual modifier statement:
- *      virtualModifier = NumLock;
- *
- *   Add this virtual modifier to the key's vmodmap. The given virtual
- *   modifier must be declared at the top level of the file with a
- *   virtual_modifiers statement, e.g.:
- *      virtual_modifiers NumLock;
- *
- * - repeat statement:
- *      repeat = True;
- *
- *   Set whether the key should repeat or not. Must be a boolean value.
- *
- * Led map statements
- * ------------------------
- * Statements of the form:
- *      indicator "Shift Lock" { ... }
- *
- *   This statement specifies the behavior and binding of the LED (a.k.a
- *   indicator) with the given name ("Shift Lock" above). The name should
- *   have been declared previously in the xkb_keycodes section (see Led
- *   name statement), and given an index there. If it wasn't, it is created
- *   with the next free index.
- *   The body of the statement describes the conditions of the keyboard
- *   state which will cause the LED to be lit. It may include the following
- *   statements:
- *
- * - modifiers statment:
- *      modifiers = ScrollLock;
- *
- *   If the given modifiers are in the required state (see below), the
- *   led is lit.
- *
- * - whichModifierState statment:
- *      whichModState = Latched + Locked;
- *
- *   Can be any combination of:
- *      base, latched, locked, effective
- *      any (i.e. all of the above)
- *      none (i.e. none of the above)
- *      compat (legacy value, treated as effective)
- *   This will cause the respective portion of the modifer state (see
- *   struct xkb_state) to be matched against the modifiers given in the
- *   "modifiers" statement.
- *
- *   Here's a simple example:
- *      indicator "Num Lock" {
- *          modifiers = NumLock;
- *          whichModState = Locked;
- *      };
- *   Whenever the NumLock modifier is locked, the Num Lock LED will light
- *   up.
- *
- * - groups statment:
- *      groups = All - group1;
- *
- *   If the given groups are in the required state (see below), the led
- *   is lit.
- *
- * - whichGroupState statment:
- *      whichGroupState = Effective;
- *
- *   Can be any combination of:
- *      base, latched, locked, effective
- *      any (i.e. all of the above)
- *      none (i.e. none of the above)
- *   This will cause the respective portion of the group state (see
- *   struct xkb_state) to be matched against the groups given in the
- *   "groups" statement.
- *
- *   Note: the above conditions are disjunctive, i.e. if any of them are
- *   satisfied the led is lit.
- *
- * Virtual modifier statements
- * ---------------------------
- * Statements of the form:
- *     virtual_modifiers LControl;
- *
- * Can appear in the xkb_types, xkb_compat, xkb_symbols sections.
- * TODO
- *
- * Effect on keymap
- * ----------------
- * After all of the xkb_compat sections have been compiled, the following
- * members of struct xkb_keymap are finalized:
- *      darray(struct xkb_sym_interpret) sym_interprets;
- *      darray(struct xkb_led) leds;
- *      char *compat_section_name;
- * TODO: virtual modifiers.
- */
-
 enum si_field {
     SI_FIELD_VIRTUAL_MOD    = (1 << 0),
     SI_FIELD_ACTION         = (1 << 1),
@@ -432,19 +259,19 @@ ResolveStateAndPredicate(ExprDef *expr, enum xkb_match_operation *pred_rtrn,
     }
 
     *pred_rtrn = MATCH_EXACTLY;
-    if (expr->op == EXPR_ACTION_DECL) {
+    if (expr->expr.op == EXPR_ACTION_DECL) {
         const char *pred_txt = xkb_atom_text(info->keymap->ctx,
-                                             expr->value.action.name);
+                                             expr->action.name);
         if (!LookupString(symInterpretMatchMaskNames, pred_txt, pred_rtrn)) {
             log_err(info->keymap->ctx,
                     "Illegal modifier predicate \"%s\"; Ignored\n", pred_txt);
             return false;
         }
-        expr = expr->value.action.args;
+        expr = expr->action.args;
     }
-    else if (expr->op == EXPR_IDENT) {
+    else if (expr->expr.op == EXPR_IDENT) {
         const char *pred_txt = xkb_atom_text(info->keymap->ctx,
-                                             expr->value.str);
+                                             expr->ident.ident);
         if (pred_txt && istreq(pred_txt, "any")) {
             *pred_rtrn = MATCH_ANY;
             *mods_rtrn = MOD_REAL_MASK_ALL;
@@ -555,16 +382,28 @@ MergeIncludedCompatMaps(CompatInfo *into, CompatInfo *from,
         from->name = NULL;
     }
 
-    darray_foreach(si, from->interps) {
-        si->merge = (merge == MERGE_DEFAULT ? si->merge : merge);
-        if (!AddInterp(into, si, false))
-            into->errorCount++;
+    if (darray_empty(into->interps)) {
+        into->interps = from->interps;
+        darray_init(from->interps);
+    }
+    else {
+        darray_foreach(si, from->interps) {
+            si->merge = (merge == MERGE_DEFAULT ? si->merge : merge);
+            if (!AddInterp(into, si, false))
+                into->errorCount++;
+        }
     }
 
-    darray_foreach(ledi, from->leds) {
-        ledi->merge = (merge == MERGE_DEFAULT ? ledi->merge : merge);
-        if (!AddLedMap(into, ledi, false))
-            into->errorCount++;
+    if (darray_empty(into->leds)) {
+        into->leds = from->leds;
+        darray_init(from->leds);
+    }
+    else {
+        darray_foreach(ledi, from->leds) {
+            ledi->merge = (merge == MERGE_DEFAULT ? ledi->merge : merge);
+            if (!AddLedMap(into, ledi, false))
+                into->errorCount++;
+        }
     }
 }
 
@@ -805,7 +644,7 @@ HandleInterpBody(CompatInfo *info, VarDef *def, SymInterpInfo *si)
     ExprDef *arrayNdx;
 
     for (; def; def = (VarDef *) def->common.next) {
-        if (def->name && def->name->op == EXPR_FIELD_REF) {
+        if (def->name && def->name->expr.op == EXPR_FIELD_REF) {
             log_err(info->keymap->ctx,
                     "Cannot set a global default value from within an interpret statement; "
                     "Move statements to the global file scope\n");
@@ -840,15 +679,7 @@ HandleInterpDef(CompatInfo *info, InterpDef *def, enum merge_mode merge)
 
     si = info->default_interp;
     si.merge = merge = (def->merge == MERGE_DEFAULT ? merge : def->merge);
-
-    if (!LookupKeysym(def->sym, &si.interp.sym)) {
-        log_err(info->keymap->ctx,
-                "Could not resolve keysym %s; "
-                "Symbol interpretation ignored\n",
-                def->sym);
-        return false;
-    }
-
+    si.interp.sym = def->sym;
     si.interp.match = pred;
     si.interp.mods = mods;
 
@@ -937,11 +768,11 @@ HandleCompatMapFile(CompatInfo *info, XkbFile *file, enum merge_mode merge)
             ok = HandleGlobalVar(info, (VarDef *) stmt);
             break;
         case STMT_VMOD:
-            ok = HandleVModDef(info->keymap, (VModDef *) stmt);
+            ok = HandleVModDef(info->keymap, (VModDef *) stmt, merge);
             break;
         default:
             log_err(info->keymap->ctx,
-                    "Interpretation files may not include other types; "
+                    "Compat files may not include other types; "
                     "Ignoring %s\n", stmt_type_to_string(stmt->type));
             ok = false;
             break;
@@ -958,15 +789,21 @@ HandleCompatMapFile(CompatInfo *info, XkbFile *file, enum merge_mode merge)
     }
 }
 
+/* Temporary struct for CopyInterps. */
+struct collect {
+    darray(struct xkb_sym_interpret) sym_interprets;
+};
+
 static void
-CopyInterps(CompatInfo *info, bool needSymbol, enum xkb_match_operation pred)
+CopyInterps(CompatInfo *info, bool needSymbol, enum xkb_match_operation pred,
+            struct collect *collect)
 {
     SymInterpInfo *si;
 
     darray_foreach(si, info->interps)
         if (si->interp.match == pred &&
             (si->interp.sym != XKB_KEY_NoSymbol) == needSymbol)
-            darray_append(info->keymap->sym_interprets, si->interp);
+            darray_append(collect->sym_interprets, si->interp);
 }
 
 static void
@@ -1025,19 +862,26 @@ static bool
 CopyCompatToKeymap(struct xkb_keymap *keymap, CompatInfo *info)
 {
     keymap->compat_section_name = strdup_safe(info->name);
+    XkbEscapeMapName(keymap->compat_section_name);
 
     if (!darray_empty(info->interps)) {
+        struct collect collect;
+        darray_init(collect.sym_interprets);
+
         /* Most specific to least specific. */
-        CopyInterps(info, true, MATCH_EXACTLY);
-        CopyInterps(info, true, MATCH_ALL);
-        CopyInterps(info, true, MATCH_NONE);
-        CopyInterps(info, true, MATCH_ANY);
-        CopyInterps(info, true, MATCH_ANY_OR_NONE);
-        CopyInterps(info, false, MATCH_EXACTLY);
-        CopyInterps(info, false, MATCH_ALL);
-        CopyInterps(info, false, MATCH_NONE);
-        CopyInterps(info, false, MATCH_ANY);
-        CopyInterps(info, false, MATCH_ANY_OR_NONE);
+        CopyInterps(info, true, MATCH_EXACTLY, &collect);
+        CopyInterps(info, true, MATCH_ALL, &collect);
+        CopyInterps(info, true, MATCH_NONE, &collect);
+        CopyInterps(info, true, MATCH_ANY, &collect);
+        CopyInterps(info, true, MATCH_ANY_OR_NONE, &collect);
+        CopyInterps(info, false, MATCH_EXACTLY, &collect);
+        CopyInterps(info, false, MATCH_ALL, &collect);
+        CopyInterps(info, false, MATCH_NONE, &collect);
+        CopyInterps(info, false, MATCH_ANY, &collect);
+        CopyInterps(info, false, MATCH_ANY_OR_NONE, &collect);
+
+        keymap->num_sym_interprets = darray_size(collect.sym_interprets);
+        keymap->sym_interprets = darray_mem(collect.sym_interprets, 0);
     }
 
     CopyLedMapDefs(info);

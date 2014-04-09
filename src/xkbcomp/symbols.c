@@ -125,12 +125,11 @@ ClearGroupInfo(GroupInfo *groupi)
 static void
 CopyGroupInfo(GroupInfo *to, const GroupInfo *from)
 {
-    xkb_level_index_t j;
     to->defined = from->defined;
     to->type = from->type;
     darray_init(to->levels);
     darray_copy(to->levels, from->levels);
-    for (j = 0; j < darray_size(to->levels); j++)
+    for (xkb_level_index_t j = 0; j < darray_size(to->levels); j++)
         if (darray_item(from->levels, j).num_syms > 1)
             darray_item(to->levels, j).u.syms =
                 memdup(darray_item(from->levels, j).u.syms,
@@ -143,7 +142,7 @@ InitKeyInfo(struct xkb_context *ctx, KeyInfo *keyi)
 {
     memset(keyi, 0, sizeof(*keyi));
     keyi->merge = MERGE_OVERRIDE;
-    keyi->name = xkb_atom_intern(ctx, "*");
+    keyi->name = xkb_atom_intern_literal(ctx, "*");
     keyi->out_of_range_group_action = RANGE_WRAP;
 }
 
@@ -177,7 +176,7 @@ typedef struct {
     KeyInfo default_key;
     ActionsInfo *actions;
     darray(xkb_atom_t) group_names;
-    darray(ModMapEntry) modMaps;
+    darray(ModMapEntry) modmaps;
 
     struct xkb_keymap *keymap;
 } SymbolsInfo;
@@ -203,7 +202,7 @@ ClearSymbolsInfo(SymbolsInfo *info)
         ClearKeyInfo(keyi);
     darray_free(info->keys);
     darray_free(info->group_names);
-    darray_free(info->modMaps);
+    darray_free(info->modmaps);
     ClearKeyInfo(&info->default_key);
 }
 
@@ -437,7 +436,7 @@ AddModMapEntry(SymbolsInfo *info, ModMapEntry *new)
     ModMapEntry *old;
     bool clobber = (new->merge != MERGE_AUGMENT);
 
-    darray_foreach(old, info->modMaps) {
+    darray_foreach(old, info->modmaps) {
         xkb_mod_index_t use, ignore;
 
         if ((new->haveSymbol != old->haveSymbol) ||
@@ -470,7 +469,7 @@ AddModMapEntry(SymbolsInfo *info, ModMapEntry *new)
         return true;
     }
 
-    darray_append(info->modMaps, *new);
+    darray_append(info->modmaps, *new);
     return true;
 }
 
@@ -480,7 +479,6 @@ static void
 MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
                      enum merge_mode merge)
 {
-    unsigned int i;
     KeyInfo *keyi;
     ModMapEntry *mm;
     xkb_atom_t *group_name;
@@ -498,7 +496,7 @@ MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
 
     group_names_in_both = MIN(darray_size(into->group_names),
                               darray_size(from->group_names));
-    for (i = 0; i < group_names_in_both; i++) {
+    for (xkb_layout_index_t i = 0; i < group_names_in_both; i++) {
         if (!darray_item(from->group_names, i))
             continue;
 
@@ -511,16 +509,28 @@ MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
     darray_foreach_from(group_name, from->group_names, group_names_in_both)
         darray_append(into->group_names, *group_name);
 
-    darray_foreach(keyi, from->keys) {
-        keyi->merge = (merge == MERGE_DEFAULT ? keyi->merge : merge);
-        if (!AddKeySymbols(into, keyi, false))
-            into->errorCount++;
+    if (darray_empty(into->keys)) {
+        into->keys = from->keys;
+        darray_init(from->keys);
+    }
+    else {
+        darray_foreach(keyi, from->keys) {
+            keyi->merge = (merge == MERGE_DEFAULT ? keyi->merge : merge);
+            if (!AddKeySymbols(into, keyi, false))
+                into->errorCount++;
+        }
     }
 
-    darray_foreach(mm, from->modMaps) {
-        mm->merge = (merge == MERGE_DEFAULT ? mm->merge : merge);
-        if (!AddModMapEntry(into, mm))
-            into->errorCount++;
+    if (darray_empty(into->modmaps)) {
+        into->modmaps = from->modmaps;
+        darray_init(from->modmaps);
+    }
+    else {
+        darray_foreach(mm, from->modmaps) {
+            mm->merge = (merge == MERGE_DEFAULT ? mm->merge : merge);
+            if (!AddModMapEntry(into, mm))
+                into->errorCount++;
+        }
     }
 }
 
@@ -626,30 +636,6 @@ GetGroupIndex(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
     return true;
 }
 
-bool
-LookupKeysym(const char *str, xkb_keysym_t *sym_rtrn)
-{
-    xkb_keysym_t sym;
-
-    if (!str || istreq(str, "any") || istreq(str, "nosymbol")) {
-        *sym_rtrn = XKB_KEY_NoSymbol;
-        return 1;
-    }
-
-    if (istreq(str, "none") || istreq(str, "voidsymbol")) {
-        *sym_rtrn = XKB_KEY_VoidSymbol;
-        return 1;
-    }
-
-    sym = xkb_keysym_from_name(str, 0);
-    if (sym != XKB_KEY_NoSymbol) {
-        *sym_rtrn = sym;
-        return 1;
-    }
-
-    return 0;
-}
-
 static bool
 AddSymbolsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
                 ExprDef *value)
@@ -657,8 +643,6 @@ AddSymbolsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
     xkb_layout_index_t ndx;
     GroupInfo *groupi;
     xkb_level_index_t nLevels;
-    xkb_level_index_t i;
-    int j;
 
     if (!GetGroupIndex(info, keyi, arrayNdx, SYMBOLS, &ndx))
         return false;
@@ -670,11 +654,11 @@ AddSymbolsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
         return true;
     }
 
-    if (value->op != EXPR_KEYSYM_LIST) {
+    if (value->expr.op != EXPR_KEYSYM_LIST) {
         log_err(info->keymap->ctx,
                 "Expected a list of symbols, found %s; "
                 "Ignoring symbols for group %u of %s\n",
-                expr_op_type_to_string(value->op), ndx + 1,
+                expr_op_type_to_string(value->expr.op), ndx + 1,
                 KeyInfoText(info, keyi));
         return false;
     }
@@ -687,44 +671,24 @@ AddSymbolsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
         return false;
     }
 
-    nLevels = darray_size(value->value.list.symsMapIndex);
+    nLevels = darray_size(value->keysym_list.symsMapIndex);
     if (darray_size(groupi->levels) < nLevels)
         darray_resize0(groupi->levels, nLevels);
 
     groupi->defined |= GROUP_FIELD_SYMS;
 
-    for (i = 0; i < nLevels; i++) {
+    for (xkb_level_index_t i = 0; i < nLevels; i++) {
         unsigned int sym_index;
         struct xkb_level *leveli = &darray_item(groupi->levels, i);
 
-        sym_index = darray_item(value->value.list.symsMapIndex, i);
-        leveli->num_syms = darray_item(value->value.list.symsNumEntries, i);
+        sym_index = darray_item(value->keysym_list.symsMapIndex, i);
+        leveli->num_syms = darray_item(value->keysym_list.symsNumEntries, i);
         if (leveli->num_syms > 1)
             leveli->u.syms = calloc(leveli->num_syms, sizeof(*leveli->u.syms));
 
-        for (j = 0; j < leveli->num_syms; j++) {
-            char *sym_name = darray_item(value->value.list.syms,
-                                         sym_index + j);
-            xkb_keysym_t keysym;
-
-            if (!LookupKeysym(sym_name, &keysym)) {
-                const char *group_name = "unnamed";
-
-                if (ndx < darray_size(info->group_names) &&
-                    darray_item(info->group_names, ndx))
-                    group_name = xkb_atom_text(info->keymap->ctx,
-                                               darray_item(info->group_names,
-                                                           ndx));
-
-                log_warn(info->keymap->ctx,
-                         "Could not resolve keysym %s for key %s, group %u (%s), level %u\n",
-                         sym_name, KeyInfoText(info, keyi), ndx + 1,
-                         group_name, i);
-
-                ClearLevelInfo(leveli);
-                leveli->num_syms = 0;
-                break;
-            }
+        for (unsigned j = 0; j < leveli->num_syms; j++) {
+            xkb_keysym_t keysym = darray_item(value->keysym_list.syms,
+                                              sym_index + j);
 
             if (leveli->num_syms == 1) {
                 if (keysym == XKB_KEY_NoSymbol)
@@ -745,12 +709,10 @@ static bool
 AddActionsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
                 ExprDef *value)
 {
-    unsigned int i;
     xkb_layout_index_t ndx;
     GroupInfo *groupi;
     unsigned int nActs;
     ExprDef *act;
-    union xkb_action *toAct;
 
     if (!GetGroupIndex(info, keyi, arrayNdx, ACTIONS, &ndx))
         return false;
@@ -762,11 +724,11 @@ AddActionsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
         return true;
     }
 
-    if (value->op != EXPR_ACTION_LIST) {
+    if (value->expr.op != EXPR_ACTION_LIST) {
         log_wsgo(info->keymap->ctx,
                  "Bad expression type (%d) for action list value; "
                  "Ignoring actions for group %u of %s\n",
-                 value->op, ndx, KeyInfoText(info, keyi));
+                 value->expr.op, ndx, KeyInfoText(info, keyi));
         return false;
     }
 
@@ -778,7 +740,7 @@ AddActionsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
     }
 
     nActs = 0;
-    for (act = value->value.child; act; act = (ExprDef *) act->common.next)
+    for (act = value->unary.child; act; act = (ExprDef *) act->common.next)
         nActs++;
 
     if (darray_size(groupi->levels) < nActs)
@@ -786,9 +748,9 @@ AddActionsToKey(SymbolsInfo *info, KeyInfo *keyi, ExprDef *arrayNdx,
 
     groupi->defined |= GROUP_FIELD_ACTS;
 
-    act = value->value.child;
-    for (i = 0; i < nActs; i++) {
-        toAct = &darray_item(groupi->levels, i).action;
+    act = value->unary.child;
+    for (unsigned i = 0; i < nActs; i++) {
+        union xkb_action *toAct = &darray_item(groupi->levels, i).action;
 
         if (!HandleActionDef(act, info->keymap, toAct, info->actions))
             log_err(info->keymap->ctx,
@@ -817,19 +779,20 @@ static bool
 SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
                 ExprDef *arrayNdx, ExprDef *value)
 {
-    bool ok = true;
     struct xkb_context *ctx = info->keymap->ctx;
 
     if (istreq(field, "type")) {
         xkb_layout_index_t ndx;
         xkb_atom_t val;
 
-        if (!ExprResolveString(ctx, value, &val))
-            log_vrb(ctx, 1,
+        if (!ExprResolveString(ctx, value, &val)) {
+            log_err(ctx,
                     "The type field of a key symbol map must be a string; "
                     "Ignoring illegal type definition\n");
+            return false;
+        }
 
-        if (arrayNdx == NULL) {
+        if (!arrayNdx) {
             keyi->default_type = val;
             keyi->defined |= KEY_FIELD_DEFAULT_TYPE;
         }
@@ -848,32 +811,33 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
             darray_item(keyi->groups, ndx).defined |= GROUP_FIELD_TYPE;
         }
     }
-    else if (istreq(field, "symbols"))
+    else if (istreq(field, "symbols")) {
         return AddSymbolsToKey(info, keyi, arrayNdx, value);
-    else if (istreq(field, "actions"))
+    }
+    else if (istreq(field, "actions")) {
         return AddActionsToKey(info, keyi, arrayNdx, value);
+    }
     else if (istreq(field, "vmods") ||
              istreq(field, "virtualmods") ||
              istreq(field, "virtualmodifiers")) {
         xkb_mod_mask_t mask;
 
-        ok = ExprResolveModMask(info->keymap, value, MOD_VIRT, &mask);
-        if (ok) {
-            keyi->vmodmap = mask;
-            keyi->defined |= KEY_FIELD_VMODMAP;
-        }
-        else {
-            log_err(info->keymap->ctx,
+        if (!ExprResolveModMask(info->keymap, value, MOD_VIRT, &mask)) {
+            log_err(ctx,
                     "Expected a virtual modifier mask, found %s; "
                     "Ignoring virtual modifiers definition for key %s\n",
-                    expr_op_type_to_string(value->op),
+                    expr_op_type_to_string(value->expr.op),
                     KeyInfoText(info, keyi));
+            return false;
         }
+
+        keyi->vmodmap = mask;
+        keyi->defined |= KEY_FIELD_VMODMAP;
     }
     else if (istreq(field, "locking") ||
              istreq(field, "lock") ||
              istreq(field, "locks")) {
-        log_err(info->keymap->ctx,
+        log_vrb(ctx, 1,
                 "Key behaviors not supported; "
                 "Ignoring locking specification for key %s\n",
                 KeyInfoText(info, keyi));
@@ -881,14 +845,14 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
     else if (istreq(field, "radiogroup") ||
              istreq(field, "permanentradiogroup") ||
              istreq(field, "allownone")) {
-        log_err(info->keymap->ctx,
+        log_vrb(ctx, 1,
                 "Radio groups not supported; "
                 "Ignoring radio group specification for key %s\n",
                 KeyInfoText(info, keyi));
     }
     else if (istreq_prefix("overlay", field) ||
              istreq_prefix("permanentoverlay", field)) {
-        log_err(info->keymap->ctx,
+        log_vrb(ctx, 1,
                 "Overlays not supported; "
                 "Ignoring overlay specification for key %s\n",
                 KeyInfoText(info, keyi));
@@ -898,14 +862,14 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
              istreq(field, "repeat")) {
         unsigned int val;
 
-        ok = ExprResolveEnum(ctx, value, &val, repeatEntries);
-        if (!ok) {
-            log_err(info->keymap->ctx,
+        if (!ExprResolveEnum(ctx, value, &val, repeatEntries)) {
+            log_err(ctx,
                     "Illegal repeat setting for %s; "
                     "Non-boolean repeat setting ignored\n",
                     KeyInfoText(info, keyi));
             return false;
         }
+
         keyi->repeat = val;
         keyi->defined |= KEY_FIELD_REPEAT;
     }
@@ -914,18 +878,14 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
         bool set;
 
         if (!ExprResolveBoolean(ctx, value, &set)) {
-            log_err(info->keymap->ctx,
+            log_err(ctx,
                     "Illegal groupsWrap setting for %s; "
                     "Non-boolean value ignored\n",
                     KeyInfoText(info, keyi));
             return false;
         }
 
-        if (set)
-            keyi->out_of_range_group_action = RANGE_WRAP;
-        else
-            keyi->out_of_range_group_action = RANGE_SATURATE;
-
+        keyi->out_of_range_group_action = (set ? RANGE_WRAP : RANGE_SATURATE);
         keyi->defined |= KEY_FIELD_GROUPINFO;
     }
     else if (istreq(field, "groupsclamp") ||
@@ -933,18 +893,14 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
         bool set;
 
         if (!ExprResolveBoolean(ctx, value, &set)) {
-            log_err(info->keymap->ctx,
+            log_err(ctx,
                     "Illegal groupsClamp setting for %s; "
                     "Non-boolean value ignored\n",
                     KeyInfoText(info, keyi));
             return false;
         }
 
-        if (set)
-            keyi->out_of_range_group_action = RANGE_SATURATE;
-        else
-            keyi->out_of_range_group_action = RANGE_WRAP;
-
+        keyi->out_of_range_group_action = (set ? RANGE_SATURATE : RANGE_WRAP);
         keyi->defined |= KEY_FIELD_GROUPINFO;
     }
     else if (istreq(field, "groupsredirect") ||
@@ -952,7 +908,7 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
         xkb_layout_index_t grp;
 
         if (!ExprResolveGroup(ctx, value, &grp)) {
-            log_err(info->keymap->ctx,
+            log_err(ctx,
                     "Illegal group index for redirect of key %s; "
                     "Definition with non-integer group ignored\n",
                     KeyInfoText(info, keyi));
@@ -964,17 +920,17 @@ SetSymbolsField(SymbolsInfo *info, KeyInfo *keyi, const char *field,
         keyi->defined |= KEY_FIELD_GROUPINFO;
     }
     else {
-        log_err(info->keymap->ctx,
+        log_err(ctx,
                 "Unknown field %s in a symbol interpretation; "
                 "Definition ignored\n",
                 field);
-        ok = false;
+        return false;
     }
 
-    return ok;
+    return true;
 }
 
-static int
+static bool
 SetGroupName(SymbolsInfo *info, ExprDef *arrayNdx, ExprDef *value)
 {
     xkb_layout_index_t group, group_to_use;
@@ -1024,16 +980,16 @@ SetGroupName(SymbolsInfo *info, ExprDef *arrayNdx, ExprDef *value)
     return true;
 }
 
-static int
+static bool
 HandleGlobalVar(SymbolsInfo *info, VarDef *stmt)
 {
     const char *elem, *field;
     ExprDef *arrayNdx;
     bool ret;
 
-    if (ExprResolveLhs(info->keymap->ctx, stmt->name, &elem, &field,
-                       &arrayNdx) == 0)
-        return 0;               /* internal error, already reported */
+    if (!ExprResolveLhs(info->keymap->ctx, stmt->name, &elem, &field, &arrayNdx))
+        return false;
+
     if (elem && istreq(elem, "key")) {
         ret = SetSymbolsField(info, &info->default_key, field, arrayNdx,
                               stmt->value);
@@ -1082,7 +1038,7 @@ HandleSymbolsBody(SymbolsInfo *info, VarDef *def, KeyInfo *keyi)
     ExprDef *arrayNdx;
 
     for (; def; def = (VarDef *) def->common.next) {
-        if (def->name && def->name->op == EXPR_FIELD_REF) {
+        if (def->name && def->name->expr.op == EXPR_FIELD_REF) {
             log_err(info->keymap->ctx,
                     "Cannot set a global default value from within a key statement; "
                     "Move statements to the global file scope\n");
@@ -1090,7 +1046,7 @@ HandleSymbolsBody(SymbolsInfo *info, VarDef *def, KeyInfo *keyi)
         }
 
         if (!def->name) {
-            if (!def->value || def->value->op == EXPR_KEYSYM_LIST)
+            if (!def->value || def->value->expr.op == EXPR_KEYSYM_LIST)
                 field = "symbols";
             else
                 field = "actions";
@@ -1143,22 +1099,21 @@ SetExplicitGroup(SymbolsInfo *info, KeyInfo *keyi)
     return true;
 }
 
-static int
+static bool
 HandleSymbolsDef(SymbolsInfo *info, SymbolsDef *stmt)
 {
     KeyInfo keyi;
-    xkb_layout_index_t i;
 
     keyi = info->default_key;
     darray_init(keyi.groups);
     darray_copy(keyi.groups, info->default_key.groups);
-    for (i = 0; i < darray_size(keyi.groups); i++)
+    for (xkb_layout_index_t i = 0; i < darray_size(keyi.groups); i++)
         CopyGroupInfo(&darray_item(keyi.groups, i),
                       &darray_item(info->default_key.groups, i));
     keyi.merge = stmt->merge;
     keyi.name = stmt->keyName;
 
-    if (!HandleSymbolsBody(info, (VarDef *) stmt->symbols, &keyi)) {
+    if (!HandleSymbolsBody(info, stmt->symbols, &keyi)) {
         info->errorCount++;
         return false;
     }
@@ -1179,7 +1134,6 @@ HandleSymbolsDef(SymbolsInfo *info, SymbolsDef *stmt)
 static bool
 HandleModMapDef(SymbolsInfo *info, ModMapDef *def)
 {
-    ExprDef *key;
     ModMapEntry tmp;
     xkb_mod_index_t ndx;
     bool ok;
@@ -1196,13 +1150,15 @@ HandleModMapDef(SymbolsInfo *info, ModMapDef *def)
 
     ok = true;
     tmp.modifier = ndx;
+    tmp.merge = def->merge;
 
-    for (key = def->keys; key != NULL; key = (ExprDef *) key->common.next) {
+    for (ExprDef *key = def->keys; key; key = (ExprDef *) key->common.next) {
         xkb_keysym_t sym;
 
-        if (key->op == EXPR_VALUE && key->value_type == EXPR_TYPE_KEYNAME) {
+        if (key->expr.op == EXPR_VALUE &&
+            key->expr.value_type == EXPR_TYPE_KEYNAME) {
             tmp.haveSymbol = false;
-            tmp.u.keyName = key->value.keyName;
+            tmp.u.keyName = key->key_name.key_name;
         }
         else if (ExprResolveKeySym(ctx, key, &sym)) {
             tmp.haveSymbol = true;
@@ -1241,14 +1197,14 @@ HandleSymbolsFile(SymbolsInfo *info, XkbFile *file, enum merge_mode merge)
             ok = HandleGlobalVar(info, (VarDef *) stmt);
             break;
         case STMT_VMOD:
-            ok = HandleVModDef(info->keymap, (VModDef *) stmt);
+            ok = HandleVModDef(info->keymap, (VModDef *) stmt, merge);
             break;
         case STMT_MODMAP:
             ok = HandleModMapDef(info, (ModMapDef *) stmt);
             break;
         default:
             log_err(info->keymap->ctx,
-                    "Interpretation files may not include other types; "
+                    "Symbols files may not include other types; "
                     "Ignoring %s\n", stmt_type_to_string(stmt->type));
             ok = false;
             break;
@@ -1339,19 +1295,19 @@ FindAutomaticType(struct xkb_context *ctx, GroupInfo *groupi)
         darray_item(groupi->levels, level).u.syms[0])
 
     if (width == 1 || width <= 0)
-        return xkb_atom_intern(ctx, "ONE_LEVEL");
+        return xkb_atom_intern_literal(ctx, "ONE_LEVEL");
 
     sym0 = GET_SYM(0);
     sym1 = GET_SYM(1);
 
     if (width == 2) {
         if (xkb_keysym_is_lower(sym0) && xkb_keysym_is_upper(sym1))
-            return xkb_atom_intern(ctx, "ALPHABETIC");
+            return xkb_atom_intern_literal(ctx, "ALPHABETIC");
 
         if (xkb_keysym_is_keypad(sym0) || xkb_keysym_is_keypad(sym1))
-            return xkb_atom_intern(ctx, "KEYPAD");
+            return xkb_atom_intern_literal(ctx, "KEYPAD");
 
-        return xkb_atom_intern(ctx, "TWO_LEVEL");
+        return xkb_atom_intern_literal(ctx, "TWO_LEVEL");
     }
 
     if (width <= 4) {
@@ -1360,15 +1316,15 @@ FindAutomaticType(struct xkb_context *ctx, GroupInfo *groupi)
             sym3 = (width == 4 ? GET_SYM(3) : XKB_KEY_NoSymbol);
 
             if (xkb_keysym_is_lower(sym2) && xkb_keysym_is_upper(sym3))
-                return xkb_atom_intern(ctx, "FOUR_LEVEL_ALPHABETIC");
+                return xkb_atom_intern_literal(ctx, "FOUR_LEVEL_ALPHABETIC");
 
-            return xkb_atom_intern(ctx, "FOUR_LEVEL_SEMIALPHABETIC");
+            return xkb_atom_intern_literal(ctx, "FOUR_LEVEL_SEMIALPHABETIC");
         }
 
         if (xkb_keysym_is_keypad(sym0) || xkb_keysym_is_keypad(sym1))
-            return xkb_atom_intern(ctx, "FOUR_LEVEL_KEYPAD");
+            return xkb_atom_intern_literal(ctx, "FOUR_LEVEL_KEYPAD");
 
-        return xkb_atom_intern(ctx, "FOUR_LEVEL");
+        return xkb_atom_intern_literal(ctx, "FOUR_LEVEL");
     }
 
     return XKB_ATOM_NONE;
@@ -1561,7 +1517,7 @@ CopyModMapDef(SymbolsInfo *info, ModMapEntry *entry)
         }
     }
 
-    key->modmap |= (1 << entry->modifier);
+    key->modmap |= (1u << entry->modifier);
     return true;
 }
 
@@ -1570,9 +1526,9 @@ CopySymbolsToKeymap(struct xkb_keymap *keymap, SymbolsInfo *info)
 {
     KeyInfo *keyi;
     ModMapEntry *mm;
-    struct xkb_key *key;
 
     keymap->symbols_section_name = strdup_safe(info->name);
+    XkbEscapeMapName(keymap->symbols_section_name);
 
     keymap->num_group_names = darray_size(info->group_names);
     keymap->group_names = darray_mem(info->group_names, 0);
@@ -1583,6 +1539,8 @@ CopySymbolsToKeymap(struct xkb_keymap *keymap, SymbolsInfo *info)
             info->errorCount++;
 
     if (xkb_context_get_log_verbosity(keymap->ctx) > 3) {
+        struct xkb_key *key;
+
         xkb_foreach_key(key, keymap) {
             if (key->name == XKB_ATOM_NONE)
                 continue;
@@ -1594,7 +1552,7 @@ CopySymbolsToKeymap(struct xkb_keymap *keymap, SymbolsInfo *info)
         }
     }
 
-    darray_foreach(mm, info->modMaps)
+    darray_foreach(mm, info->modmaps)
         if (!CopyModMapDef(info, mm))
             info->errorCount++;
 
@@ -1617,9 +1575,6 @@ CompileSymbols(XkbFile *file, struct xkb_keymap *keymap,
     info.default_key.merge = merge;
 
     HandleSymbolsFile(&info, file, merge);
-
-    if (darray_empty(info.keys))
-        goto err_info;
 
     if (info.errorCount != 0)
         goto err_info;

@@ -24,6 +24,12 @@
 
  ********************************************************/
 
+/*
+ * The parser should work with reasonably recent versions of either
+ * bison or byacc.  So if you make changes, try to make sure it works
+ * in both!
+ */
+
 %{
 #include "xkbcomp-priv.h"
 #include "ast-build.h"
@@ -31,24 +37,52 @@
 
 struct parser_param {
     struct xkb_context *ctx;
-    void *scanner;
+    struct scanner *scanner;
     XkbFile *rtrn;
     bool more_maps;
 };
 
+#define parser_err(param, fmt, ...) \
+    scanner_err((param)->scanner, fmt, ##__VA_ARGS__)
+
+#define parser_warn(param, fmt, ...) \
+    scanner_warn((param)->scanner, fmt, ##__VA_ARGS__)
+
 static void
-_xkbcommon_error(struct YYLTYPE *loc, struct parser_param *param, const char *msg)
+_xkbcommon_error(struct parser_param *param, const char *msg)
 {
-    scanner_error(loc, param->scanner, msg);
+    parser_err(param, "%s", msg);
 }
 
-#define scanner param->scanner
+static bool
+resolve_keysym(const char *str, xkb_keysym_t *sym_rtrn)
+{
+    xkb_keysym_t sym;
+
+    if (!str || istreq(str, "any") || istreq(str, "nosymbol")) {
+        *sym_rtrn = XKB_KEY_NoSymbol;
+        return true;
+    }
+
+    if (istreq(str, "none") || istreq(str, "voidsymbol")) {
+        *sym_rtrn = XKB_KEY_VoidSymbol;
+        return true;
+    }
+
+    sym = xkb_keysym_from_name(str, XKB_KEYSYM_NO_FLAGS);
+    if (sym != XKB_KEY_NoSymbol) {
+        *sym_rtrn = sym;
+        return true;
+    }
+
+    return false;
+}
+
+#define param_scanner param->scanner
 %}
 
-%name-prefix    "_xkbcommon_"
-%define         api.pure
-%locations
-%lex-param      { void *scanner }
+%pure-parser
+%lex-param      { struct scanner *param_scanner }
 %parse-param    { struct parser_param *param }
 
 %token
@@ -126,13 +160,13 @@ _xkbcommon_error(struct YYLTYPE *loc, struct parser_param *param, const char *ms
 
 %union  {
         int              ival;
-        unsigned         uval;
         int64_t          num;
         enum xkb_file_type file_type;
         char            *str;
         xkb_atom_t      sval;
         enum merge_mode merge;
         enum xkb_map_flags mapFlags;
+        xkb_keysym_t    keysym;
         ParseCommon     *any;
         ExprDef         *expr;
         VarDef          *var;
@@ -154,13 +188,13 @@ _xkbcommon_error(struct YYLTYPE *loc, struct parser_param *param, const char *ms
 %type <str>     IDENT STRING
 %type <sval>    KEYNAME
 %type <num>     KeyCode
-%type <ival>    Number Integer Float SignedNumber
+%type <ival>    Number Integer Float SignedNumber DoodadType
 %type <merge>   MergeMode OptMergeMode
 %type <file_type> XkbCompositeType FileType
-%type <uval>    DoodadType
 %type <mapFlags> Flag Flags OptFlags
-%type <str>     MapName OptMapName KeySym
+%type <str>     MapName OptMapName
 %type <sval>    FieldSpec Ident Element String
+%type <keysym>  KeySym
 %type <any>     DeclList Decl
 %type <expr>    OptExprList ExprList Expr Term Lhs Terminal ArrayInit KeySyms
 %type <expr>    OptKeySymList KeySymList Action ActionList Coord CoordList
@@ -206,7 +240,7 @@ XkbFile         :       XkbCompositeMap
 XkbCompositeMap :       OptFlags XkbCompositeType OptMapName OBRACE
                             XkbMapConfigList
                         CBRACE SEMI
-                        { $$ = XkbFileCreate(param->ctx, $2, $3, &$5->common, $1); }
+                        { $$ = XkbFileCreate($2, $3, (ParseCommon *) $5, $1); }
                 ;
 
 XkbCompositeType:       XKB_KEYMAP      { $$ = FILE_TYPE_KEYMAP; }
@@ -219,7 +253,8 @@ XkbMapConfigList :      XkbMapConfigList XkbMapConfig
                             if (!$2)
                                 $$ = $1;
                             else
-                                $$ = (XkbFile *)AppendStmt(&$1->common, &$2->common);
+                                $$ = (XkbFile *) AppendStmt((ParseCommon *) $1,
+                                                            (ParseCommon *) $2);
                         }
                 |       XkbMapConfig
                         { $$ = $1; }
@@ -235,7 +270,7 @@ XkbMapConfig    :       OptFlags FileType OptMapName OBRACE
                                 $$ = NULL;
                             }
                             else {
-                                $$ = XkbFileCreate(param->ctx, $2, $3, $5, $1);
+                                $$ = XkbFileCreate($2, $3, $5, $1);
                             }
                         }
                 ;
@@ -273,64 +308,64 @@ DeclList        :       DeclList Decl
 Decl            :       OptMergeMode VarDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode VModDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode InterpretDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode KeyNameDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode KeyAliasDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode KeyTypeDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode SymbolsDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode ModMapDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode GroupCompatDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode LedMapDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode LedNameDecl
                         {
                             $2->merge = $1;
-                            $$ = &$2->common;
+                            $$ = (ParseCommon *) $2;
                         }
                 |       OptMergeMode ShapeDecl          { $$ = NULL; }
                 |       OptMergeMode SectionDecl        { $$ = NULL; }
                 |       OptMergeMode DoodadDecl         { $$ = NULL; }
                 |       MergeMode STRING
                         {
-                            $$ = &IncludeCreate(param->ctx, $2, $1)->common;
+                            $$ = (ParseCommon *) IncludeCreate(param->ctx, $2, $1);
                             free($2);
                         }
                 ;
@@ -338,9 +373,9 @@ Decl            :       OptMergeMode VarDecl
 VarDecl         :       Lhs EQUALS Expr SEMI
                         { $$ = VarCreate($1, $3); }
                 |       Ident SEMI
-                        { $$ = BoolVarCreate($1, 1); }
+                        { $$ = BoolVarCreate($1, true); }
                 |       EXCLAM Ident SEMI
-                        { $$ = BoolVarCreate($2, 0); }
+                        { $$ = BoolVarCreate($2, false); }
                 ;
 
 KeyNameDecl     :       KEYNAME EQUALS KeyCode SEMI
@@ -356,7 +391,8 @@ VModDecl        :       VIRTUAL_MODS VModDefList SEMI
                 ;
 
 VModDefList     :       VModDefList COMMA VModDef
-                        { $$ = (VModDef *)AppendStmt(&$1->common, &$3->common); }
+                        { $$ = (VModDef *) AppendStmt((ParseCommon *) $1,
+                                                      (ParseCommon *) $3); }
                 |       VModDef
                         { $$ = $1; }
                 ;
@@ -380,7 +416,8 @@ InterpretMatch  :       KeySym PLUS Expr
                 ;
 
 VarDeclList     :       VarDeclList VarDecl
-                        { $$ = (VarDef *)AppendStmt(&$1->common, &$2->common); }
+                        { $$ = (VarDef *) AppendStmt((ParseCommon *) $1,
+                                                     (ParseCommon *) $2); }
                 |       VarDecl
                         { $$ = $1; }
                 ;
@@ -394,11 +431,12 @@ KeyTypeDecl     :       TYPE String OBRACE
 SymbolsDecl     :       KEY KEYNAME OBRACE
                             SymbolsBody
                         CBRACE SEMI
-                        { $$ = SymbolsCreate($2, (ExprDef *)$4); }
+                        { $$ = SymbolsCreate($2, $4); }
                 ;
 
 SymbolsBody     :       SymbolsBody COMMA SymbolsVarDecl
-                        { $$ = (VarDef *)AppendStmt(&$1->common, &$3->common); }
+                        { $$ = (VarDef *) AppendStmt((ParseCommon *) $1,
+                                                     (ParseCommon *) $3); }
                 |       SymbolsVarDecl
                         { $$ = $1; }
                 |       { $$ = NULL; }
@@ -406,8 +444,8 @@ SymbolsBody     :       SymbolsBody COMMA SymbolsVarDecl
 
 SymbolsVarDecl  :       Lhs EQUALS Expr         { $$ = VarCreate($1, $3); }
                 |       Lhs EQUALS ArrayInit    { $$ = VarCreate($1, $3); }
-                |       Ident                   { $$ = BoolVarCreate($1, 1); }
-                |       EXCLAM Ident            { $$ = BoolVarCreate($2, 0); }
+                |       Ident                   { $$ = BoolVarCreate($1, true); }
+                |       EXCLAM Ident            { $$ = BoolVarCreate($2, false); }
                 |       ArrayInit               { $$ = VarCreate(NULL, $1); }
                 ;
 
@@ -452,11 +490,11 @@ SectionBody     :       SectionBody SectionBodyItem     { $$ = NULL;}
 SectionBodyItem :       ROW OBRACE RowBody CBRACE SEMI
                         { $$ = NULL; }
                 |       VarDecl
-                        { FreeStmt(&$1->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $1); $$ = NULL; }
                 |       DoodadDecl
                         { $$ = NULL; }
                 |       LedMapDecl
-                        { FreeStmt(&$1->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $1); $$ = NULL; }
                 |       OverlayDecl
                         { $$ = NULL; }
                 ;
@@ -467,7 +505,7 @@ RowBody         :       RowBody RowBodyItem     { $$ = NULL;}
 
 RowBodyItem     :       KEYS OBRACE Keys CBRACE SEMI { $$ = NULL; }
                 |       VarDecl
-                        { FreeStmt(&$1->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $1); $$ = NULL; }
                 ;
 
 Keys            :       Keys COMMA Key          { $$ = NULL; }
@@ -477,7 +515,7 @@ Keys            :       Keys COMMA Key          { $$ = NULL; }
 Key             :       KEYNAME
                         { $$ = NULL; }
                 |       OBRACE ExprList CBRACE
-                        { FreeStmt(&$2->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $2); $$ = NULL; }
                 ;
 
 OverlayDecl     :       OVERLAY String OBRACE OverlayKeyList CBRACE SEMI
@@ -502,7 +540,7 @@ OutlineInList   :       OBRACE CoordList CBRACE
                 |       Ident EQUALS OBRACE CoordList CBRACE
                         { $$ = NULL; }
                 |       Ident EQUALS Expr
-                        { FreeStmt(&$3->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $3); $$ = NULL; }
                 ;
 
 CoordList       :       CoordList COMMA Coord
@@ -516,7 +554,7 @@ Coord           :       OBRACKET SignedNumber COMMA SignedNumber CBRACKET
                 ;
 
 DoodadDecl      :       DoodadType String OBRACE VarDeclList CBRACE SEMI
-                        { FreeStmt(&$4->common); $$ = NULL; }
+                        { FreeStmt((ParseCommon *) $4); $$ = NULL; }
                 ;
 
 DoodadType      :       TEXT    { $$ = 0; }
@@ -530,19 +568,19 @@ FieldSpec       :       Ident   { $$ = $1; }
                 ;
 
 Element         :       ACTION_TOK
-                        { $$ = xkb_atom_intern(param->ctx, "action"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "action"); }
                 |       INTERPRET
-                        { $$ = xkb_atom_intern(param->ctx, "interpret"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "interpret"); }
                 |       TYPE
-                        { $$ = xkb_atom_intern(param->ctx, "type"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "type"); }
                 |       KEY
-                        { $$ = xkb_atom_intern(param->ctx, "key"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "key"); }
                 |       GROUP
-                        { $$ = xkb_atom_intern(param->ctx, "group"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "group"); }
                 |       MODIFIER_MAP
-                        {$$ = xkb_atom_intern(param->ctx, "modifier_map");}
+                        {$$ = xkb_atom_intern_literal(param->ctx, "modifier_map");}
                 |       INDICATOR
-                        { $$ = xkb_atom_intern(param->ctx, "indicator"); }
+                        { $$ = xkb_atom_intern_literal(param->ctx, "indicator"); }
                 |       SHAPE
                         { $$ = XKB_ATOM_NONE; }
                 |       ROW
@@ -576,7 +614,8 @@ OptExprList     :       ExprList        { $$ = $1; }
                 ;
 
 ExprList        :       ExprList COMMA Expr
-                        { $$ = (ExprDef *)AppendStmt(&$1->common, &$3->common); }
+                        { $$ = (ExprDef *) AppendStmt((ParseCommon *) $1,
+                                                      (ParseCommon *) $3); }
                 |       Expr
                         { $$ = $1; }
                 ;
@@ -596,17 +635,17 @@ Expr            :       Expr DIVIDE Expr
                 ;
 
 Term            :       MINUS Term
-                        { $$ = ExprCreateUnary(EXPR_NEGATE, $2->value_type, $2); }
+                        { $$ = ExprCreateUnary(EXPR_NEGATE, $2->expr.value_type, $2); }
                 |       PLUS Term
-                        { $$ = ExprCreateUnary(EXPR_UNARY_PLUS, $2->value_type, $2); }
+                        { $$ = ExprCreateUnary(EXPR_UNARY_PLUS, $2->expr.value_type, $2); }
                 |       EXCLAM Term
                         { $$ = ExprCreateUnary(EXPR_NOT, EXPR_TYPE_BOOLEAN, $2); }
                 |       INVERT Term
-                        { $$ = ExprCreateUnary(EXPR_INVERT, $2->value_type, $2); }
+                        { $$ = ExprCreateUnary(EXPR_INVERT, $2->expr.value_type, $2); }
                 |       Lhs
                         { $$ = $1;  }
                 |       FieldSpec OPAREN OptExprList CPAREN %prec OPAREN
-                        { $$ = ActionCreate($1, $3); }
+                        { $$ = ExprCreateAction($1, $3); }
                 |       Terminal
                         { $$ = $1;  }
                 |       OPAREN Expr CPAREN
@@ -614,75 +653,34 @@ Term            :       MINUS Term
                 ;
 
 ActionList      :       ActionList COMMA Action
-                        { $$ = (ExprDef *)AppendStmt(&$1->common, &$3->common); }
+                        { $$ = (ExprDef *) AppendStmt((ParseCommon *) $1,
+                                                      (ParseCommon *) $3); }
                 |       Action
                         { $$ = $1; }
                 ;
 
 Action          :       FieldSpec OPAREN OptExprList CPAREN
-                        { $$ = ActionCreate($1, $3); }
+                        { $$ = ExprCreateAction($1, $3); }
                 ;
 
 Lhs             :       FieldSpec
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_IDENT, EXPR_TYPE_UNKNOWN);
-                            expr->value.str = $1;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateIdent($1); }
                 |       FieldSpec DOT FieldSpec
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_FIELD_REF, EXPR_TYPE_UNKNOWN);
-                            expr->value.field.element = $1;
-                            expr->value.field.field = $3;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateFieldRef($1, $3); }
                 |       FieldSpec OBRACKET Expr CBRACKET
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_ARRAY_REF, EXPR_TYPE_UNKNOWN);
-                            expr->value.array.element = XKB_ATOM_NONE;
-                            expr->value.array.field = $1;
-                            expr->value.array.entry = $3;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateArrayRef(XKB_ATOM_NONE, $1, $3); }
                 |       FieldSpec DOT FieldSpec OBRACKET Expr CBRACKET
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_ARRAY_REF, EXPR_TYPE_UNKNOWN);
-                            expr->value.array.element = $1;
-                            expr->value.array.field = $3;
-                            expr->value.array.entry = $5;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateArrayRef($1, $3, $5); }
                 ;
 
 Terminal        :       String
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_VALUE, EXPR_TYPE_STRING);
-                            expr->value.str = $1;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateString($1); }
                 |       Integer
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_VALUE, EXPR_TYPE_INT);
-                            expr->value.ival = $1;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateInteger($1); }
                 |       Float
-                        {
-                            $$ = NULL;
-                        }
+                        { $$ = NULL; }
                 |       KEYNAME
-                        {
-                            ExprDef *expr;
-                            expr = ExprCreate(EXPR_VALUE, EXPR_TYPE_KEYNAME);
-                            expr->value.keyName = $1;
-                            $$ = expr;
-                        }
+                        { $$ = ExprCreateKeyName($1); }
                 ;
 
 OptKeySymList   :       KeySymList      { $$ = $1; }
@@ -690,31 +688,42 @@ OptKeySymList   :       KeySymList      { $$ = $1; }
                 ;
 
 KeySymList      :       KeySymList COMMA KeySym
-                        { $$ = AppendKeysymList($1, $3); }
+                        { $$ = ExprAppendKeysymList($1, $3); }
                 |       KeySymList COMMA KeySyms
-                        { $$ = AppendMultiKeysymList($1, $3); }
+                        { $$ = ExprAppendMultiKeysymList($1, $3); }
                 |       KeySym
-                        { $$ = CreateKeysymList($1); }
+                        { $$ = ExprCreateKeysymList($1); }
                 |       KeySyms
-                        { $$ = CreateMultiKeysymList($1); }
+                        { $$ = ExprCreateMultiKeysymList($1); }
                 ;
 
 KeySyms         :       OBRACE KeySymList CBRACE
                         { $$ = $2; }
                 ;
 
-KeySym          :       IDENT   { $$ = $1; }
-                |       SECTION { $$ = strdup("section"); }
+KeySym          :       IDENT
+                        {
+                            if (!resolve_keysym($1, &$$))
+                                parser_warn(param, "unrecognized keysym");
+                            free($1);
+                        }
+                |       SECTION { $$ = XKB_KEY_section; }
                 |       Integer
                         {
-                            if ($1 < 10) {      /* XK_0 .. XK_9 */
-                                $$ = malloc(2);
-                                $$[0] = $1 + '0';
-                                $$[1] = '\0';
+                            if ($1 < 0) {
+                                parser_warn(param, "unrecognized keysym");
+                                $$ = XKB_KEY_NoSymbol;
+                            }
+                            else if ($1 < 10) {      /* XKB_KEY_0 .. XKB_KEY_9 */
+                                $$ = XKB_KEY_0 + (xkb_keysym_t) $1;
                             }
                             else {
-                                $$ = malloc(17);
-                                snprintf($$, 17, "0x%x", $1);
+                                char buf[17];
+                                snprintf(buf, sizeof(buf), "0x%x", $1);
+                                if (!resolve_keysym(buf, &$$)) {
+                                    parser_warn(param, "unrecognized keysym");
+                                    $$ = XKB_KEY_NoSymbol;
+                                }
                             }
                         }
                 ;
@@ -737,7 +746,7 @@ KeyCode         :       INTEGER { $$ = $1; }
                 ;
 
 Ident           :       IDENT   { $$ = xkb_atom_steal(param->ctx, $1); }
-                |       DEFAULT { $$ = xkb_atom_intern(param->ctx, "default"); }
+                |       DEFAULT { $$ = xkb_atom_intern_literal(param->ctx, "default"); }
                 ;
 
 String          :       STRING  { $$ = xkb_atom_steal(param->ctx, $1); }
@@ -752,17 +761,15 @@ MapName         :       STRING  { $$ = $1; }
 
 %%
 
-#undef scanner
-
 XkbFile *
-parse(struct xkb_context *ctx, void *scanner, const char *map)
+parse(struct xkb_context *ctx, struct scanner *scanner, const char *map)
 {
-    struct parser_param param;
     int ret;
     XkbFile *first = NULL;
-
-    param.scanner = scanner;
-    param.ctx = ctx;
+    struct parser_param param = {
+        .scanner = scanner,
+        .ctx = ctx,
+    };
 
     /*
      * If we got a specific map, we look for it exclusively and return
