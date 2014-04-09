@@ -175,10 +175,10 @@ const LookupEntry actionTypeNames[] = {
     { "SwitchScreen", ACTION_TYPE_SWITCH_VT },
     { "SetControls", ACTION_TYPE_CTRL_SET },
     { "LockControls", ACTION_TYPE_CTRL_LOCK },
-    { "RedirectKey", ACTION_TYPE_KEY_REDIRECT },
-    { "Redirect", ACTION_TYPE_KEY_REDIRECT },
     { "Private", ACTION_TYPE_PRIVATE },
     /* deprecated actions below here - unused */
+    { "RedirectKey", ACTION_TYPE_NONE },
+    { "Redirect", ACTION_TYPE_NONE },
     { "ISOLock", ACTION_TYPE_NONE },
     { "ActionMessage", ACTION_TYPE_NONE },
     { "MessageAction", ACTION_TYPE_NONE },
@@ -251,9 +251,9 @@ const char *
 KeyNameText(struct xkb_context *ctx, xkb_atom_t name)
 {
     const char *sname = xkb_atom_text(ctx, name);
-    size_t len = strlen(sname) + 3;
+    size_t len = strlen_safe(sname) + 3;
     char *buf = xkb_context_get_buffer(ctx, len);
-    snprintf(buf, len, "<%s>", sname);
+    snprintf(buf, len, "<%s>", strempty(sname));
     return buf;
 }
 
@@ -280,7 +280,7 @@ ModMaskText(const struct xkb_keymap *keymap, xkb_mod_mask_t mask)
     darray_enumerate(i, mod, keymap->mods) {
         int ret;
 
-        if (!(mask & (1 << i)))
+        if (!(mask & (1u << i)))
             continue;
 
         ret = snprintf(buf + pos, sizeof(buf) - pos, "%s%s",
@@ -307,14 +307,14 @@ LedStateMaskText(struct xkb_context *ctx, enum xkb_state_component mask)
     for (unsigned i = 0; mask; i++) {
         int ret;
 
-        if (!(mask & (1 << i)))
+        if (!(mask & (1u << i)))
             continue;
 
-        mask &= ~(1 << i);
+        mask &= ~(1u << i);
 
         ret = snprintf(buf + pos, sizeof(buf) - pos, "%s%s",
                        pos == 0 ? "" : "+",
-                       LookupValue(modComponentMaskNames, 1 << i));
+                       LookupValue(modComponentMaskNames, 1u << i));
         if (ret <= 0 || pos + ret >= sizeof(buf))
             break;
         else
@@ -339,14 +339,14 @@ ControlMaskText(struct xkb_context *ctx, enum xkb_action_controls mask)
     for (unsigned i = 0; mask; i++) {
         int ret;
 
-        if (!(mask & (1 << i)))
+        if (!(mask & (1u << i)))
             continue;
 
-        mask &= ~(1 << i);
+        mask &= ~(1u << i);
 
         ret = snprintf(buf + pos, sizeof(buf) - pos, "%s%s",
                        pos == 0 ? "" : "+",
-                       LookupValue(ctrlMaskNames, 1 << i));
+                       LookupValue(ctrlMaskNames, 1u << i));
         if (ret <= 0 || pos + ret >= sizeof(buf))
             break;
         else

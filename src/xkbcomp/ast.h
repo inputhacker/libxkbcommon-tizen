@@ -143,9 +143,9 @@ expr_op_type_to_string(enum expr_op_type type);
 const char *
 expr_value_type_to_string(enum expr_value_type type);
 
-typedef struct _ParseCommon {
-    enum stmt_type type;
+typedef struct _ParseCommon  {
     struct _ParseCommon *next;
+    enum stmt_type type;
 } ParseCommon;
 
 typedef struct _IncludeStmt {
@@ -158,40 +158,92 @@ typedef struct _IncludeStmt {
     struct _IncludeStmt *next_incl;
 } IncludeStmt;
 
-typedef struct _Expr {
+typedef struct {
     ParseCommon common;
     enum expr_op_type op;
     enum expr_value_type value_type;
-    union {
-        struct {
-            struct _Expr *left;
-            struct _Expr *right;
-        } binary;
-        struct {
-            xkb_atom_t element;
-            xkb_atom_t field;
-        } field;
-        struct {
-            xkb_atom_t element;
-            xkb_atom_t field;
-            struct _Expr *entry;
-        } array;
-        struct {
-            xkb_atom_t name;
-            struct _Expr *args;
-        } action;
-        struct {
-            darray(char *) syms;
-            darray(int) symsMapIndex;
-            darray(unsigned int) symsNumEntries;
-        } list;
-        struct _Expr *child;
-        xkb_atom_t str;
-        unsigned uval;
-        int ival;
-        xkb_atom_t keyName;
-    } value;
-} ExprDef;
+} ExprCommon;
+
+typedef union ExprDef ExprDef;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t ident;
+} ExprIdent;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t str;
+} ExprString;
+
+typedef struct {
+    ExprCommon expr;
+    bool set;
+} ExprBoolean;
+
+typedef struct {
+    ExprCommon expr;
+    int ival;
+} ExprInteger;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t key_name;
+} ExprKeyName;
+
+typedef struct {
+    ExprCommon expr;
+    ExprDef *left;
+    ExprDef *right;
+} ExprBinary;
+
+typedef struct {
+    ExprCommon expr;
+    ExprDef *child;
+} ExprUnary;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t element;
+    xkb_atom_t field;
+} ExprFieldRef;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t element;
+    xkb_atom_t field;
+    ExprDef *entry;
+} ExprArrayRef;
+
+typedef struct {
+    ExprCommon expr;
+    xkb_atom_t name;
+    ExprDef *args;
+} ExprAction;
+
+typedef struct {
+    ExprCommon expr;
+    darray(xkb_keysym_t) syms;
+    darray(unsigned int) symsMapIndex;
+    darray(unsigned int) symsNumEntries;
+} ExprKeysymList;
+
+union ExprDef {
+    ParseCommon common;
+    /* Maybe someday we can use C11 anonymous struct for ExprCommon here. */
+    ExprCommon expr;
+    ExprIdent ident;
+    ExprString string;
+    ExprBoolean boolean;
+    ExprInteger integer;
+    ExprKeyName key_name;
+    ExprBinary binary;
+    ExprUnary unary;
+    ExprFieldRef field_ref;
+    ExprArrayRef array_ref;
+    ExprAction action;
+    ExprKeysymList keysym_list;
+};
 
 typedef struct {
     ParseCommon common;
@@ -232,7 +284,7 @@ typedef struct {
     ParseCommon common;
     enum merge_mode merge;
     xkb_atom_t keyName;
-    ExprDef *symbols;
+    VarDef *symbols;
 } SymbolsDef;
 
 typedef struct {
@@ -245,14 +297,14 @@ typedef struct {
 typedef struct {
     ParseCommon common;
     enum merge_mode merge;
-    int group;
+    unsigned group;
     ExprDef *def;
 } GroupCompatDef;
 
 typedef struct {
     ParseCommon common;
     enum merge_mode merge;
-    char *sym;
+    xkb_keysym_t sym;
     ExprDef *match;
     VarDef *def;
 } InterpDef;
@@ -260,7 +312,7 @@ typedef struct {
 typedef struct {
     ParseCommon common;
     enum merge_mode merge;
-    int ndx;
+    unsigned ndx;
     ExprDef *name;
     bool virtual;
 } LedNameDef;

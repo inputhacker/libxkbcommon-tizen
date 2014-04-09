@@ -64,6 +64,7 @@ test_key_seq_va(struct xkb_keymap *keymap, va_list ap)
     xkb_keysym_t keysym;
 
     const xkb_keysym_t *syms;
+    xkb_keysym_t sym;
     unsigned int nsyms, i;
     char ksbuf[64];
 
@@ -77,7 +78,12 @@ test_key_seq_va(struct xkb_keymap *keymap, va_list ap)
         op = va_arg(ap, int);
 
         nsyms = xkb_state_key_get_syms(state, kc, &syms);
-        fprintf(stderr, "got %d syms for key 0x%x: [", nsyms, kc);
+        if (nsyms == 1) {
+            sym = xkb_state_key_get_one_sym(state, kc);
+            syms = &sym;
+        }
+
+        fprintf(stderr, "got %u syms for key 0x%x: [", nsyms, kc);
 
         if (op == DOWN || op == BOTH)
             xkb_state_update_key(state, kc, XKB_KEY_DOWN);
@@ -100,6 +106,15 @@ test_key_seq_va(struct xkb_keymap *keymap, va_list ap)
                 fprintf(stderr, "Expected keysym: %s. ", ksbuf);;
                 xkb_keysym_get_name(syms[i], ksbuf, sizeof(ksbuf));
                 fprintf(stderr, "Got keysym: %s.\n", ksbuf);;
+                goto fail;
+            }
+        }
+
+        if (nsyms == 0) {
+            keysym = va_arg(ap, int);
+            if (keysym != XKB_KEY_NoSymbol) {
+                xkb_keysym_get_name(keysym, ksbuf, sizeof(ksbuf));
+                fprintf(stderr, "Expected %s, but got no keysyms.\n", ksbuf);
                 goto fail;
             }
         }
@@ -138,13 +153,22 @@ test_key_seq(struct xkb_keymap *keymap, ...)
     return ret;
 }
 
-const char *
+char *
 test_get_path(const char *path_rel)
 {
-    static char path[PATH_MAX];
+    char *path;
+    size_t path_len;
     const char *srcdir = getenv("srcdir");
 
-    snprintf(path, PATH_MAX - 1,
+    path_len = strlen(srcdir ? srcdir : ".") +
+               strlen(path_rel ? path_rel : "") + 12;
+    path = malloc(path_len);
+    if (!path) {
+        fprintf(stderr, "Failed to allocate path (%d chars) for %s\n",
+                (int) path_len, path);
+        return NULL;
+    }
+    snprintf(path, path_len,
              "%s/test/data/%s", srcdir ? srcdir : ".",
              path_rel ? path_rel : "");
 
@@ -155,10 +179,15 @@ char *
 test_read_file(const char *path_rel)
 {
     struct stat info;
-    char *ret, *tmp;
+    char *ret, *tmp, *path;
     int fd, count, remaining;
 
-    fd = open(test_get_path(path_rel), O_RDONLY);
+    path = test_get_path(path_rel);
+    if (!path)
+        return NULL;
+
+    fd = open(path, O_RDONLY);
+    free(path);
     if (fd < 0)
         return NULL;
 
@@ -195,6 +224,7 @@ test_get_context(enum test_context_flags test_flags)
 {
     enum xkb_context_flags ctx_flags;
     struct xkb_context *ctx;
+    char *path;
 
     ctx_flags = XKB_CONTEXT_NO_DEFAULT_INCLUDES;
     if (test_flags & CONTEXT_ALLOW_ENVIRONMENT_NAMES) {
@@ -212,7 +242,12 @@ test_get_context(enum test_context_flags test_flags)
     if (!ctx)
         return NULL;
 
-    xkb_context_include_path_append(ctx, test_get_path(""));
+    path = test_get_path("");
+    if (!path)
+        return NULL;
+
+    xkb_context_include_path_append(ctx, path);
+    free(path);
 
     return ctx;
 }
@@ -222,11 +257,16 @@ test_compile_file(struct xkb_context *context, const char *path_rel)
 {
     struct xkb_keymap *keymap;
     FILE *file;
-    const char *path = test_get_path(path_rel);
+    char *path;
+
+    path = test_get_path(path_rel);
+    if (!path)
+        return NULL;
 
     file = fopen(path, "r");
     if (!file) {
         fprintf(stderr, "Failed to open path: %s\n", path);
+        free(path);
         return NULL;
     }
     assert(file != NULL);
@@ -237,10 +277,12 @@ test_compile_file(struct xkb_context *context, const char *path_rel)
 
     if (!keymap) {
         fprintf(stderr, "Failed to compile path: %s\n", path);
+        free(path);
         return NULL;
     }
 
     fprintf(stderr, "Successfully compiled path: %s\n", path);
+    free(path);
 
     return keymap;
 }
@@ -302,4 +344,96 @@ test_compile_rules(struct xkb_context *context, const char *rules,
     }
 
     return keymap;
+}
+
+void
+test_print_keycode_state(struct xkb_state *state, xkb_keycode_t keycode)
+{
+    struct xkb_keymap *keymap;
+
+    const xkb_keysym_t *syms;
+    int nsyms;
+    char s[16];
+    xkb_layout_index_t layout;
+
+    keymap = xkb_state_get_keymap(state);
+
+    nsyms = xkb_state_key_get_syms(state, keycode, &syms);
+
+    if (nsyms <= 0)
+        return;
+
+    if (nsyms == 1) {
+        xkb_keysym_t sym = xkb_state_key_get_one_sym(state, keycode);
+        xkb_keysym_get_name(sym, s, sizeof(s));
+        printf("keysym [ %-*s ] ", (int) sizeof(s), s);
+    }
+    else {
+        printf("keysyms [ ");
+        for (int i = 0; i < nsyms; i++) {
+            xkb_keysym_get_name(syms[i], s, sizeof(s));
+            printf("%-*s ", (int) sizeof(s), s);
+        }
+        printf("] ");
+    }
+
+    xkb_state_key_get_utf8(state, keycode, s, sizeof(s));
+    printf("unicode [ %s ] ", s);
+
+    layout = xkb_state_key_get_layout(state, keycode);
+    printf("layout [ %s (%d) ] ",
+           xkb_keymap_layout_get_name(keymap, layout), layout);
+
+    printf("level [ %d ] ",
+           xkb_state_key_get_level(state, keycode, layout));
+
+    printf("mods [ ");
+    for (xkb_mod_index_t mod = 0; mod < xkb_keymap_num_mods(keymap); mod++) {
+        if (xkb_state_mod_index_is_active(state, mod,
+                                          XKB_STATE_MODS_EFFECTIVE) <= 0)
+            continue;
+        if (xkb_state_mod_index_is_consumed(state, keycode, mod))
+            printf("-%s ", xkb_keymap_mod_get_name(keymap, mod));
+        else
+            printf("%s ", xkb_keymap_mod_get_name(keymap, mod));
+    }
+    printf("] ");
+
+    printf("leds [ ");
+    for (xkb_led_index_t led = 0; led < xkb_keymap_num_leds(keymap); led++) {
+        if (xkb_state_led_index_is_active(state, led) <= 0)
+            continue;
+        printf("%s ", xkb_keymap_led_get_name(keymap, led));
+    }
+    printf("] ");
+
+    printf("\n");
+}
+
+void
+test_print_state_changes(enum xkb_state_component changed)
+{
+    if (changed == 0)
+        return;
+
+    printf("changed [ ");
+    if (changed & XKB_STATE_LAYOUT_EFFECTIVE)
+        printf("effective-layout ");
+    if (changed & XKB_STATE_LAYOUT_DEPRESSED)
+        printf("depressed-layout ");
+    if (changed & XKB_STATE_LAYOUT_LATCHED)
+        printf("latched-layout ");
+    if (changed & XKB_STATE_LAYOUT_LOCKED)
+        printf("locked-layout ");
+    if (changed & XKB_STATE_MODS_EFFECTIVE)
+        printf("effective-mods ");
+    if (changed & XKB_STATE_MODS_DEPRESSED)
+        printf("depressed-mods ");
+    if (changed & XKB_STATE_MODS_LATCHED)
+        printf("latched-mods ");
+    if (changed & XKB_STATE_MODS_LOCKED)
+        printf("locked-mods ");
+    if (changed & XKB_STATE_LEDS)
+        printf("leds ");
+    printf("]\n");
 }

@@ -30,6 +30,9 @@
 #include "xkbcommon/xkbcommon.h"
 #include "utils.h"
 
+/* Automake test exit code to signify SKIP (à la PASS, FAIL, etc). */
+#define SKIP_TEST 77
+
 /* The offset between KEY_* numbering, and keycodes in the XKB evdev
  * dataset. */
 #define EVDEV_OFFSET 8
@@ -49,7 +52,7 @@ test_key_seq(struct xkb_keymap *keymap, ...);
 int
 test_key_seq_va(struct xkb_keymap *keymap, va_list args);
 
-const char *
+char *
 test_get_path(const char *path_rel);
 
 char *
@@ -76,3 +79,9 @@ struct xkb_keymap *
 test_compile_rules(struct xkb_context *context, const char *rules,
                    const char *model, const char *layout, const char *variant,
                    const char *options);
+
+void
+test_print_keycode_state(struct xkb_state *state, xkb_keycode_t keycode);
+
+void
+test_print_state_changes(enum xkb_state_component changed);

@@ -26,7 +26,7 @@
 
 #include "test.h"
 
-#define BENCHMARK_ITERATIONS 1000
+#define BENCHMARK_ITERATIONS 2500
 
 static int
 test_rmlvo_va(struct xkb_context *context, const char *rules,
@@ -230,6 +230,14 @@ main(int argc, char *argv[])
 
     assert(!test_rmlvo_env(ctx, "broken", "what-on-earth", "invalid", "", "",
                            KEY_A,          BOTH, XKB_KEY_a,               FINISH));
+
+    /* Ensure a keymap with an empty xkb_keycodes compiles fine. */
+    assert(test_rmlvo_env(ctx, "base", "empty", "empty", "", "",
+                          KEY_A,          BOTH, XKB_KEY_NoSymbol,         FINISH));
+
+    /* Has an illegal escape sequence, but shouldn't fail. */
+    assert(test_rmlvo_env(ctx, "evdev", "", "cz", "bksl", "",
+                          KEY_A,          BOTH, XKB_KEY_a,                FINISH));
 
     xkb_context_unref(ctx);
 
