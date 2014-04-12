@@ -39,8 +39,7 @@ in %{name}.
 cp %{SOURCE1001} .
 
 %build
-%autogen
-%autogen --disable-static
+%autogen --disable-static --disable-x11
 make %{?_smp_mflags} V=1;
 
 %install
