@@ -22,15 +22,16 @@ dnl Process this file with autoconf to create configure.
 
 # Initialize Autoconf
 AC_PREREQ([2.62])
-AC_INIT([libxkbcommon], [0.3.0],
+AC_INIT([libxkbcommon], [0.4.1],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=libxkbcommon],
         [libxkbcommon], [http://xkbcommon.org])
 AC_CONFIG_SRCDIR([Makefile.am])
 AC_CONFIG_HEADERS([src/config.h])
 AC_CONFIG_MACRO_DIR([m4])
+AC_CONFIG_AUX_DIR([build-aux])
 
 # Initialize Automake
-AM_INIT_AUTOMAKE([foreign dist-xz no-dist-gzip subdir-objects color-tests parallel-tests])
+AM_INIT_AUTOMAKE([foreign dist-xz no-dist-gzip subdir-objects color-tests parallel-tests check-news])
 AM_MAINTAINER_MODE([enable])
 
 # Get _GNU_SOURCE and friends
@@ -48,41 +49,56 @@ XORG_MEMORY_CHECK_FLAGS
 XORG_ENABLE_DOCS
 XORG_WITH_DOXYGEN
 
+# Needed in older Automakes for subdir-objects
+AM_PROG_CC_C_O
+
 # Check for compiler features
 AC_C_INLINE
 
 # Check for programs
 AC_PROG_MKDIR_P
 PKG_PROG_PKG_CONFIG
-AC_PROG_LEX
+
+# Note: we use some yacc extensions, which work with either GNU bison
+# (preferred) or byacc. Other yacc's may or may not work.
 AC_PROG_YACC
-AC_PATH_PROG([YACC_INST], $YACC)
-if test ! -f "src/xkbcomp/parser.c"; then
-   if test -z "$YACC_INST"; then
-      AC_MSG_ERROR([yacc not found - unable to compile src/xkbcomp/parser.y])
-   fi
-fi
+AC_PATH_PROG([YACC_INST], [$YACC])
+AS_IF([test ! -f "src/xkbcomp/parser.c" -a "x$YACC_INST" = x], [
+    AC_MSG_ERROR([yacc not found - unable to compile src/xkbcomp/parser.y])
+])
 
 # Checks for library functions.
 AC_CHECK_FUNCS([strcasecmp strncasecmp])
-if test "x$ac_cv_func_strcasecmp" = xno || \
-   test "x$ac_cv_func_strncasecmp" = xno; then
+AS_IF([test "x$ac_cv_func_strcasecmp" = xno -o \
+            "x$ac_cv_func_strncasecmp" = xno], [
     AC_MSG_ERROR([C library does not support strcasecmp/strncasecmp])
-fi
+])
 
-AC_CHECK_FUNCS([eaccess euidaccess])
+AC_CHECK_FUNCS([eaccess euidaccess mmap])
+
+AC_CHECK_FUNCS([secure_getenv __secure_getenv])
+AS_IF([test "x$ac_cv_func_secure_getenv" = xno -a \
+            "x$ac_cv_func___secure_getenv" = xno], [
+    AC_MSG_WARN([C library does not support secure_getenv, using getenv instead])
+])
+
+AX_GCC_BUILTIN(__builtin_expect)
 
 # Some tests use Linux-specific headers
 AC_CHECK_HEADER([linux/input.h])
 AM_CONDITIONAL(BUILD_LINUX_TESTS, [test "x$ac_cv_header_linux_input_h" = xyes])
 
 XORG_TESTSET_CFLAG([BASE_CFLAGS], [-fvisibility=hidden])
+XORG_TESTSET_CFLAG([BASE_CFLAGS], [-Wextra -Wno-unused-parameter -Wno-missing-field-initializers])
+
+XORG_CHECK_LINKER_FLAGS([-Wl,--no-undefined], [have_no_undefined=yes])
+AM_CONDITIONAL([HAVE_NO_UNDEFINED], [test "x$have_no_undefined" = xyes])
 
 # Define a configuration option for the XKB config root
 xkb_base=`$PKG_CONFIG --variable=xkb_base xkeyboard-config`
-if test "x$xkb_base" = x; then
-    xkb_base=$datadir/X11/xkb
-fi
+AS_IF([test "x$xkb_base" = x], [
+    xkb_base="$datadir/X11/xkb"
+])
 AC_ARG_WITH([xkb_config_root],
     [AS_HELP_STRING([--with-xkb-config-root=<path>],
         [Set default XKB config root (default: xkeyboard-config install path)])],
@@ -119,25 +135,57 @@ AC_ARG_WITH([default_variant],
         [Default XKB variant (default: (none))])],
     [DEFAULT_XKB_VARIANT="$withval"],
     [DEFAULT_XKB_VARAINT=])
-if ! test "x$DEFAULT_XKB_VARIANT" = x; then
+AS_IF([test "x$DEFAULT_XKB_VARIANT" != x], [
     AC_DEFINE_UNQUOTED([DEFAULT_XKB_VARIANT], ["$DEFAULT_XKB_VARIANT"],
                        [Default XKB variant])
-fi
+])
 
 AC_ARG_WITH([default_options],
     [AS_HELP_STRING([--with-default-options=<path>],
         [Default XKB options (default: (none))])],
     [DEFAULT_XKB_OPTIONS="$withval"],
     [DEFAULT_XKB_OPTIONS=])
-if ! test "x$DEFAULT_XKB_OPTIONS" = x; then
+AS_IF([test "x$DEFAULT_XKB_OPTIONS" != x], [
     AC_DEFINE_UNQUOTED([DEFAULT_XKB_OPTIONS], ["$DEFAULT_XKB_OPTIONS"],
                        [Default XKB options])
-fi
+])
+
+AC_ARG_ENABLE([x11],
+    [AS_HELP_STRING([--disable-x11],
+        [Disable support for creating keymaps with the X11 protocol (default: enabled)])],
+    [enable_x11=no], [enable_x11=yes])
+AS_IF([test "x$enable_x11" = xyes], [
+    PKG_CHECK_MODULES([XCB_XKB], [xcb xcb-xkb >= 1.10], [],
+        [AC_MSG_ERROR([xkbcommon-x11 requires xcb-xkb >= 1.10 which was not found. \
+You can disable X11 support with --disable-x11.])])
+])
+AM_CONDITIONAL([ENABLE_X11], [test "x$enable_x11" = xyes])
 
 AC_CONFIG_FILES([
     Makefile
     xkbcommon-uninstalled.pc
     xkbcommon.pc
+    xkbcommon-x11.pc
+    xkbcommon-x11-uninstalled.pc
     doc/Doxyfile
 ])
 AC_OUTPUT
+
+AC_MSG_RESULT([
+        $PACKAGE_NAME $VERSION
+
+        libxkbcommon:            yes
+        libxkbcommon-x11:        ${enable_x11}
+        documentation:           ${build_docs}
+
+        default XKB rules:       ${DEFAULT_XKB_RULES}
+        default XKB model:       ${DEFAULT_XKB_MODEL}
+        default XKB layout:      ${DEFAULT_XKB_LAYOUT}
+        default XKB variant:     ${DEFAULT_XKB_VARIANT}
+        default XKB options:     ${DEFAULT_XKB_OPTIONS}
+
+        prefix:                  ${prefix}
+        includedir:              ${includedir}
+        lib dir:                 ${libdir}
+        XKB config root:         ${XKBCONFIGROOT}
+])
