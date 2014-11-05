@@ -1,24 +1,20 @@
 Name:           libxkbcommon
-Version:        0.4.1
+Version:        0.4.3
 Release:        0
 License:        MIT
 Summary:        Wayland libxkbcommon library
 Url:            http://wayland.freedesktop.org/
 Group:          Development/Libraries
 
-#Git-Clone:	git://anongit.freedesktop.org/xorg/lib/libxkbcommon
-#Git-Web:	http://cgit.freedesktop.org/xorg/lib/libxkbcommon/
 Source:         %{name}-%{version}.tar.xz
-Source1001: 	libxkbcommon.manifest
+#X-Vcs-Url:     https://github.com/xkbcommon/libxkbcommon.git
+Source1001:     libxkbcommon.manifest
 BuildRequires:  autoconf >= 2.60
 BuildRequires:  automake
 BuildRequires:  bison
 BuildRequires:  flex
 BuildRequires:  libtool >= 2
-BuildRequires:  pkgconfig
-#BuildRequires:  pkgconfig(kbproto) >= 1.0.4
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
-#BuildRequires:  pkgconfig(xproto)
 
 %description
 Keyboard handling library using XKB data.
@@ -40,7 +36,7 @@ cp %{SOURCE1001} .
 
 %build
 %autogen --disable-static --disable-x11
-make %{?_smp_mflags} V=1;
+%__make %{?_smp_mflags} V=1;
 
 %install
 %make_install
@@ -62,4 +58,3 @@ make %{?_smp_mflags} V=1;
 %{_libdir}/libxkbcommon.so
 %{_libdir}/pkgconfig/xkbcommon.pc
 
-%changelog
