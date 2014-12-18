@@ -22,7 +22,7 @@ Keyboard handling library using XKB data.
 %package devel
 Summary:        Development files for the Wayland libxkbcommon library
 Group:          Development/Libraries
-Requires:       %{name} = %{version}
+Requires:       %{name} = %{version}-%{release}
 
 %description devel
 Keyboard handling library using XKB data.
