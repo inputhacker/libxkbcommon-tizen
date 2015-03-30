@@ -4,5 +4,5 @@ includedir=@abs_top_srcdir@
 Name: xkbcommon
 Description: XKB API common to servers and clients (uninstalled)
 Version: @PACKAGE_VERSION@
-Cflags: -I${includedir}
+Cflags: -I${includedir} @TIZEN_COMMON_CFLAGS@
 Libs: -L${libdir} -lxkbcommon

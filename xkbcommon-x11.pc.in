@@ -8,5 +8,5 @@ Description: XKB API common to servers and clients - X11 support
 Version: @PACKAGE_VERSION@
 Requires: xkbcommon
 Requires.private: xcb xcb-xkb
-Cflags: -I${includedir}
+Cflags: -I${includedir} @TIZEN_COMMON_CFLAGS@
 Libs: -L${libdir} -lxkbcommon-x11
