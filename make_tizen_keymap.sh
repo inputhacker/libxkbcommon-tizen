@@ -18,6 +18,7 @@ else
 fi
 
 echo "Generate a tizen keymap header file"
+touch $NEW_DEFINE_SYM_FILE
 
 while read KEYNAME KEYCODE
 do
@@ -34,9 +35,21 @@ do
 		break
 		fi
 	done
+	BOOL_DUPLICATED_SYM=false
 	if [ "$BOOL_FOUND_SYM" = false ]
 	then
-		echo "${KEYSYM}" >> $NEW_DEFINE_SYM_FILE
+		while read KEYSYM_NEW
+		do
+			if [ "$KEYSYM_NEW" = "$KEYSYM" ]
+			then
+				BOOL_DUPLICATED_SYM=true
+			break
+			fi
+		done < ${NEW_DEFINE_SYM_FILE}
+		if [ "$BOOL_DUPLICATED_SYM" = false ]
+		then
+			echo "${KEYSYM}" >> $NEW_DEFINE_SYM_FILE
+		fi
 	fi
 done < ${KEYMAP_FILE_PATH}
 
