@@ -1,5 +1,5 @@
 Name:           libxkbcommon
-Version:        0.4.3
+Version:        0.4.3.1
 Release:        0
 License:        MIT
 Summary:        Wayland libxkbcommon library
