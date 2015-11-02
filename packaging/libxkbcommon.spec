@@ -18,7 +18,7 @@ BuildRequires:  pkgconfig(xorg-macros) >= 1.8
 %if "%{?profile}" == "common"
 %else
 BuildRequires:  python
-BuildRequires:  e-tizen-data
+BuildRequires:  xkb-data
 %endif
 
 %description
