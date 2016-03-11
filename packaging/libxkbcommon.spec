@@ -21,6 +21,8 @@ BuildRequires:  python
 BuildRequires:  xkb-tizen-data
 %endif
 
+%global TZ_SYS_RO_SHARE  %{?TZ_SYS_RO_SHARE:%TZ_SYS_RO_SHARE}%{!?TZ_SYS_RO_SHARE:/usr/share}
+
 %description
 Keyboard handling library using XKB data.
 
@@ -43,6 +45,7 @@ cp %{SOURCE1001} .
 %if "%{?profile}" == "common"
 %else
 export TIZEN_PROFILE="%{?profile}"
+export TZ_SYS_RO_SHARE="%{TZ_SYS_RO_SHARE}"
 chmod a+x ./make_tizen_keymap.sh
 ./make_tizen_keymap.sh
 chmod a+x ./gen_tables.sh
@@ -56,6 +59,10 @@ chmod a+x ./gen_tables.sh
 %install
 %make_install
 
+#for license notification
+mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
+cp -a %{_builddir}/%{buildsubdir}/COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
+
 %post  -p /sbin/ldconfig
 
 %postun  -p /sbin/ldconfig
@@ -63,7 +70,7 @@ chmod a+x ./gen_tables.sh
 %files
 %manifest %{name}.manifest
 %defattr(-,root,root)
-%license COPYING
+%{TZ_SYS_RO_SHARE}/license/%{name}
 %{_libdir}/libxkbcommon.so.0*
 
 %files devel

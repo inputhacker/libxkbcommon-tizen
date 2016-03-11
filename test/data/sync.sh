@@ -1,6 +1,10 @@
 #/bin/sh
 
-XKBCONFIGROOT='/usr/share/X11/xkb'
+if [ "$TZ_SYS_RO_SHARE" = "" ]; then
+        TZ_SYS_RO_SHARE="/usr/share"
+fi
+
+XKBCONFIGROOT="${TZ_SYS_RO_SHARE}/X11/xkb"
 
 if [ ! -d test/data ]; then
     echo "Run this from the top source dir"
