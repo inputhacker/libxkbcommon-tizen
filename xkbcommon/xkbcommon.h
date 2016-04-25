@@ -1120,6 +1120,10 @@ xkb_keymap_led_get_index(struct xkb_keymap *keymap, const char *name);
 int
 xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t key);
 
+int
+xkb_keymap_key_set_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc, int enable);
+
+
 /** @} */
 
 /**
