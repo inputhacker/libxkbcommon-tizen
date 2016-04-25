@@ -1171,6 +1171,10 @@ xkb_keymap_key_get_syms_by_level(struct xkb_keymap *keymap,
 int
 xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t key);
 
+int
+xkb_keymap_key_set_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc, int enable);
+
+
 /** @} */
 
 /**
