@@ -42,15 +42,12 @@ in %{name}.
 cp %{SOURCE1001} .
 
 # Generate tizen keymap header except common profile
-%if "%{?profile}" == "common"
-%else
 export TIZEN_PROFILE="%{?profile}"
 export TZ_SYS_RO_SHARE="%{TZ_SYS_RO_SHARE}"
 chmod a+x ./make_tizen_keymap.sh
 ./make_tizen_keymap.sh
 chmod a+x ./gen_tables.sh
 ./gen_tables.sh
-%endif
 
 %build
 %autogen --disable-static --disable-x11 --with-tizen-profile="%{?profile}"
