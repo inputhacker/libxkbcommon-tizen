@@ -15,11 +15,8 @@ BuildRequires:  bison
 BuildRequires:  flex
 BuildRequires:  libtool >= 2
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
-%if "%{?profile}" == "common"
-%else
 BuildRequires:  python
 BuildRequires:  xkb-tizen-data
-%endif
 
 %global TZ_SYS_RO_SHARE  %{?TZ_SYS_RO_SHARE:%TZ_SYS_RO_SHARE}%{!?TZ_SYS_RO_SHARE:/usr/share}
 
@@ -41,7 +38,7 @@ in %{name}.
 %setup -qn %{name}
 cp %{SOURCE1001} .
 
-# Generate tizen keymap header except common profile
+# Generate tizen keymap header
 export TIZEN_PROFILE="%{?profile}"
 export TZ_SYS_RO_SHARE="%{TZ_SYS_RO_SHARE}"
 chmod a+x ./make_tizen_keymap.sh
