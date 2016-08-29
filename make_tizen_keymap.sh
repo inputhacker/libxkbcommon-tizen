@@ -15,9 +15,9 @@ BASE_KEYSYM_DEC=`python -c "print int('$BASE_KEYSYM', 16)"`
 
 if [ -e ${KEYMAP_FILE_PATH} ]
 then
-	echo "${TIZEN_PROFILE} have a key layout file: ${KEYMAP_FILE_PATH}"
+	echo "We have a key layout file: ${KEYMAP_FILE_PATH}"
 else
-	echo "${TIZEN_PROFILE} doesn't have a key layout file: ${KEYMAP_FILE_PATH}"
+	echo "We don't have a key layout file: ${KEYMAP_FILE_PATH}"
 	exit
 fi
 
