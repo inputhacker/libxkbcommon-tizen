@@ -39,7 +39,6 @@ in %{name}.
 cp %{SOURCE1001} .
 
 # Generate tizen keymap header
-export TIZEN_PROFILE="%{?profile}"
 export TZ_SYS_RO_SHARE="%{TZ_SYS_RO_SHARE}"
 chmod a+x ./make_tizen_keymap.sh
 ./make_tizen_keymap.sh
@@ -47,7 +46,7 @@ chmod a+x ./gen_tables.sh
 ./gen_tables.sh
 
 %build
-%autogen --disable-static --disable-x11 --with-tizen-profile="%{?profile}"
+%autogen --disable-static --disable-x11"
 %__make %{?_smp_mflags} V=1;
 
 %install
