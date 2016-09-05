@@ -35,7 +35,7 @@ This package contains the development headers for the library found
 in %{name}.
 
 %prep
-%setup -qn %{name}
+%setup -q
 cp %{SOURCE1001} .
 
 # Generate tizen keymap header
