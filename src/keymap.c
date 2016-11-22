@@ -517,3 +517,17 @@ xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc)
 
     return key->repeats;
 }
+
+XKB_EXPORT int
+xkb_keymap_key_set_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc, int enable)
+{
+    struct xkb_key *key = XkbKey(keymap, kc);
+
+    if (!key)
+        return 0;
+
+    key->repeats = !!enable;
+    key->explicit |= EXPLICIT_REPEAT;
+
+    return 1;
+}

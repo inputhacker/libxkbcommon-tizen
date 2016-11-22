@@ -43,6 +43,7 @@ global:
 	xkb_keymap_num_levels_for_key;
 	xkb_keymap_key_get_syms_by_level;
 	xkb_keymap_key_repeats;
+	xkb_keymap_key_set_repeats,
 	xkb_state_new;
 	xkb_state_ref;
 	xkb_state_unref;
