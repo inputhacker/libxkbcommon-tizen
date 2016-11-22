@@ -9,11 +9,19 @@ EXTRA_DIST = \
 	test/data \
 	README.md \
 	doc/quick-guide.md \
-	doc/keymap-format-text-v1.txt \
-	doc/rules-format.txt
+	doc/compat.md \
+	doc/keymap-format-text-v1.md \
+	doc/rules-format.txt \
+	doc/doxygen-extra.css \
+	xkbcommon.map \
+	xkbcommon-x11.map \
+	PACKAGING \
+	LICENSE \
+	test/symbols-leak-test.bash
 
 AM_CPPFLAGS = \
 	-DDFLT_XKB_CONFIG_ROOT='"$(XKBCONFIGROOT)"' \
+	-DXLOCALEDIR='"$(XLOCALEDIR)"' \
 	-I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/xkbcomp \
 	-I$(top_builddir)/src/xkbcomp \
@@ -32,11 +40,19 @@ xkbcommonincludedir = $(includedir)/xkbcommon
 xkbcommoninclude_HEADERS = \
 	xkbcommon/xkbcommon.h \
 	xkbcommon/xkbcommon-compat.h \
+	xkbcommon/xkbcommon-compose.h \
 	xkbcommon/xkbcommon-keysyms.h \
 	xkbcommon/xkbcommon-names.h
 
 lib_LTLIBRARIES = libxkbcommon.la
 libxkbcommon_la_SOURCES = \
+	src/compose/parser.c \
+	src/compose/parser.h \
+	src/compose/paths.c \
+	src/compose/paths.h \
+	src/compose/state.c \
+	src/compose/table.c \
+	src/compose/table.h \
 	src/xkbcomp/action.c \
 	src/xkbcomp/action.h \
 	src/xkbcomp/ast.h \
@@ -67,7 +83,6 @@ libxkbcommon_la_SOURCES = \
 	src/context.c \
 	src/context.h \
 	src/context-priv.c \
-	src/compat.c \
 	src/darray.h \
 	src/keysym.c \
 	src/keysym.h \
@@ -84,6 +99,9 @@ libxkbcommon_la_SOURCES = \
 	src/utf8.h \
 	src/utils.c \
 	src/utils.h
+if HAVE_VERSION_SCRIPT
+libxkbcommon_la_LDFLAGS = -Wl,--version-script=${srcdir}/xkbcommon.map
+endif HAVE_VERSION_SCRIPT
 
 if ENABLE_X11
 pkgconfig_DATA += xkbcommon-x11.pc
@@ -97,6 +115,9 @@ lib_LTLIBRARIES += libxkbcommon-x11.la
 libxkbcommon_x11_la_CFLAGS = $(AM_CFLAGS) $(XCB_XKB_CFLAGS)
 libxkbcommon_x11_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(top_srcdir)/src/x11
 libxkbcommon_x11_la_LIBADD = libxkbcommon.la $(XCB_XKB_LIBS)
+if HAVE_VERSION_SCRIPT
+libxkbcommon_x11_la_LDFLAGS = -Wl,--version-script=${srcdir}/xkbcommon-x11.map
+endif HAVE_VERSION_SCRIPT
 
 libxkbcommon_x11_la_SOURCES = \
 	src/x11/keymap.c \
@@ -131,7 +152,7 @@ all-local:: doc
 clean-local:: clean-doc
 
 doc/stamp-doxygen: $(top_srcdir)/xkbcommon/*.h
-	$(AM_V_GEN)$(DOXYGEN) doc/Doxyfile
+	$(AM_V_GEN)(cd $(top_srcdir) && $(DOXYGEN) $(abs_top_builddir)/doc/Doxyfile)
 	touch $@
 
 clean-doxygen:
@@ -153,19 +174,21 @@ endif ENABLE_DOCS
 # Some tests need to use unexported symbols, so we link them against
 # a private copy of libxkbcommon with all symbols exposed.
 check_LTLIBRARIES = libtest.la
-libtest_la_CFLAGS = $(AM_CFLAGS) -fvisibility=default
 libtest_la_SOURCES = \
 	$(libxkbcommon_la_SOURCES) \
 	test/common.c \
-	test/test.h
+	test/test.h \
+	test/evdev-scancodes.h
 
 AM_TESTS_ENVIRONMENT = \
 	XKB_LOG_LEVEL=debug; export XKB_LOG_LEVEL; \
 	XKB_LOG_VERBOSITY=10; export XKB_LOG_VERBOSITY; \
-	$(XORG_MALLOC_DEBUG_ENV)
+	$(XORG_MALLOC_DEBUG_ENV) \
+	top_srcdir=$(top_srcdir)
 
-TESTS = \
+build_run_tests = \
 	test/keysym \
+	test/keymap \
 	test/filecomp \
 	test/context \
 	test/rules-file \
@@ -173,47 +196,51 @@ TESTS = \
 	test/buffercomp \
 	test/log \
 	test/atom \
-	test/utf8
-check_PROGRAMS = \
+	test/utf8 \
+	test/state \
+	test/keyseq \
+	test/rulescomp \
+	test/compose
+build_only_tests = \
 	test/rmlvo-to-kccgst \
-	test/print-compiled-keymap \
-	test/bench-key-proc
+	test/print-compiled-keymap
+run_only_tests = \
+	test/symbols-leak-test.bash
 
 TESTS_LDADD = libtest.la
 
 test_keysym_LDADD = $(TESTS_LDADD)
+test_keymap_LDADD = $(TESTS_LDADD)
 test_filecomp_LDADD = $(TESTS_LDADD)
 test_context_LDADD = $(TESTS_LDADD)
 test_rules_file_CFLAGS = $(AM_CFLAGS) -Wno-declaration-after-statement
-test_rules_file_LDADD = $(TESTS_LDADD) -lrt
+test_rules_file_LDADD = $(TESTS_LDADD)
 test_stringcomp_LDADD = $(TESTS_LDADD)
 test_buffercomp_LDADD = $(TESTS_LDADD)
 test_log_LDADD = $(TESTS_LDADD)
 test_atom_LDADD = $(TESTS_LDADD)
 test_utf8_LDADD = $(TESTS_LDADD)
-test_rmlvo_to_kccgst_LDADD = $(TESTS_LDADD)
-test_print_compiled_keymap_LDADD = $(TESTS_LDADD)
-test_bench_key_proc_LDADD = $(TESTS_LDADD) -lrt
-
-if BUILD_LINUX_TESTS
-TESTS += \
-	test/state \
-	test/keyseq \
-	test/rulescomp
-check_PROGRAMS += \
-	test/interactive-evdev
-
 test_state_LDADD = $(TESTS_LDADD)
 test_keyseq_LDADD = $(TESTS_LDADD)
-test_rulescomp_LDADD = $(TESTS_LDADD) -lrt
+test_rulescomp_LDADD = $(TESTS_LDADD)
+test_rmlvo_to_kccgst_LDADD = $(TESTS_LDADD)
+test_print_compiled_keymap_LDADD = $(TESTS_LDADD)
+test_compose_LDADD = $(TESTS_LDADD) $(RT_LIBS)
+
+if BUILD_LINUX_TESTS
+build_only_tests += \
+	test/interactive-evdev
+
 test_interactive_evdev_LDADD = $(TESTS_LDADD)
 endif BUILD_LINUX_TESTS
 
 if ENABLE_X11
-TESTS += \
-	test/x11 \
-	test/x11comp
-check_PROGRAMS += \
+build_run_tests += \
+	test/x11
+# test/x11comp is meant to be run, but it is (temporarily?) disabled.
+# See: https://github.com/xkbcommon/libxkbcommon/issues/30
+build_only_tests += \
+	test/x11comp \
 	test/interactive-x11
 
 TESTS_X11_LDADD = $(XCB_XKB_LIBS) $(TESTS_LDADD) libxkbcommon-x11.la
@@ -227,7 +254,64 @@ test_interactive_x11_LDADD = $(TESTS_X11_LDADD)
 test_interactive_x11_CFLAGS = $(TESTS_X11_CFLAGS)
 endif ENABLE_X11
 
-check_PROGRAMS += $(TESTS)
+if ENABLE_WAYLAND
+build_only_tests += \
+	test/interactive-wayland
+
+TESTS_WAYLAND_LDADD = $(WAYLAND_LIBS) $(TESTS_LDADD)
+TESTS_WAYLAND_CFLAGS = $(WAYLAND_CFLAGS)
+
+.SECONDEXPANSION:
+
+define protostability
+$(if $(findstring unstable,$1),unstable,stable)
+endef
+
+define protoname
+$(shell echo $1 | sed 's/\([a-z\-]\+\)-[a-z]\+-v[0-9]\+/\1/')
+endef
+
+%-protocol.c: $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	$(AM_V_GEN)$(MKDIR_P) $(dir $@) && $(wayland_scanner) code < $< > $@
+%-client-protocol.h: $(WAYLAND_PROTOCOLS_DATADIR)/$$(call protostability,$$*)/$$(call protoname,$$*)/$$*.xml
+	$(AM_V_GEN)$(MKDIR_P) $(dir $@) && $(wayland_scanner) client-header < $< > $@
+
+INTERACTIVE_WL_XDG_SHELL_SRCS = \
+	xdg-shell-unstable-v5-protocol.c \
+	xdg-shell-unstable-v5-client-protocol.h
+
+test_interactive_wayland_SOURCES = \
+	test/interactive-wayland.c \
+	$(INTERACTIVE_WL_XDG_SHELL_SRCS)
+test_interactive_wayland_LDADD = $(TESTS_WAYLAND_LDADD)
+test_interactive_wayland_CFLAGS = $(TESTS_WAYLAND_CFLAGS)
+
+BUILT_SOURCES += \
+	$(INTERACTIVE_WL_XDG_SHELL_SRCS)
+endif
+
+check_PROGRAMS = $(build_run_tests) $(build_only_tests)
+TESTS = $(build_run_tests) $(run_only_tests)
+
+##
+# Benchmarks
+##
+check_LTLIBRARIES += libbench.la
+libbench_la_SOURCES = \
+	bench/bench.c \
+	bench/bench.h
+BENCH_LDADD  = libbench.la
+BENCH_LDADD += $(TESTS_LDADD) $(RT_LIBS)
+
+check_PROGRAMS += \
+	bench/key-proc \
+	bench/rules \
+	bench/rulescomp \
+	bench/compose
+bench_key_proc_LDADD = $(BENCH_LDADD)
+bench_rules_LDADD = $(BENCH_LDADD)
+bench_rulescomp_LDADD = $(BENCH_LDADD)
+bench_compose_LDADD = $(BENCH_LDADD)
 
 ##
 # Custom targets

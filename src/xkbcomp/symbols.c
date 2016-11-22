@@ -222,6 +222,7 @@ MergeGroups(SymbolsInfo *info, GroupInfo *into, GroupInfo *from, bool clobber,
             bool report, xkb_layout_index_t group, xkb_atom_t key_name)
 {
     xkb_level_index_t i, levels_in_both;
+    struct xkb_level *level;
 
     /* First find the type of the merged group. */
     if (into->type != from->type) {
@@ -298,7 +299,7 @@ MergeGroups(SymbolsInfo *info, GroupInfo *into, GroupInfo *from, bool clobber,
                 intoLevel->u.sym = fromLevel->u.sym;
             fromLevel->num_syms = 0;
         }
-        else {
+        else if (!XkbLevelsSameSyms(fromLevel, intoLevel)) {
             if (report)
                 log_warn(info->ctx,
                          "Multiple symbols for level %d/group %u on key %s; "
@@ -319,9 +320,9 @@ MergeGroups(SymbolsInfo *info, GroupInfo *into, GroupInfo *from, bool clobber,
         }
     }
     /* If @from has extra levels, get them as well. */
-    for (i = levels_in_both; i < darray_size(from->levels); i++) {
-        darray_append(into->levels, darray_item(from->levels, i));
-        darray_item(from->levels, i).num_syms = 0;
+    darray_foreach_from(level, from->levels, levels_in_both) {
+        darray_append(into->levels, *level);
+        level->num_syms = 0;
     }
     into->defined |= (from->defined & GROUP_FIELD_ACTS);
     into->defined |= (from->defined & GROUP_FIELD_SYMS);
@@ -485,8 +486,6 @@ static void
 MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
                      enum merge_mode merge)
 {
-    KeyInfo *keyi;
-    ModMapEntry *mm;
     xkb_atom_t *group_name;
     xkb_layout_index_t group_names_in_both;
 
@@ -522,6 +521,7 @@ MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
         darray_init(from->keys);
     }
     else {
+        KeyInfo *keyi;
         darray_foreach(keyi, from->keys) {
             keyi->merge = (merge == MERGE_DEFAULT ? keyi->merge : merge);
             if (!AddKeySymbols(into, keyi, false))
@@ -534,6 +534,7 @@ MergeIncludedSymbols(SymbolsInfo *into, SymbolsInfo *from,
         darray_init(from->modmaps);
     }
     else {
+        ModMapEntry *mm;
         darray_foreach(mm, from->modmaps) {
             mm->merge = (merge == MERGE_DEFAULT ? mm->merge : merge);
             if (!AddModMapEntry(into, mm))
@@ -1223,7 +1224,7 @@ HandleSymbolsFile(SymbolsInfo *info, XkbFile *file, enum merge_mode merge)
 
         if (info->errorCount > 10) {
             log_err(info->ctx, "Abandoning symbols file \"%s\"\n",
-                    file->topName);
+                    file->name);
             break;
         }
     }
@@ -1242,38 +1243,31 @@ HandleSymbolsFile(SymbolsInfo *info, XkbFile *file, enum merge_mode merge)
 static struct xkb_key *
 FindKeyForSymbol(struct xkb_keymap *keymap, xkb_keysym_t sym)
 {
-    struct xkb_key *key, *ret = NULL;
-    xkb_layout_index_t group, min_group = UINT32_MAX;
-    xkb_level_index_t level, min_level = UINT16_MAX;
+    struct xkb_key *key;
+    xkb_layout_index_t group;
+    bool got_one_group, got_one_level;
 
-    xkb_keys_foreach(key, keymap) {
-        for (group = 0; group < key->num_groups; group++) {
-            for (level = 0; level < XkbKeyGroupWidth(key, group); level++) {
-                if (key->groups[group].levels[level].num_syms != 1 ||
-                    key->groups[group].levels[level].u.sym != sym)
-                    continue;
-
-                /*
-                 * If the keysym was found in a group or level > 0, we must
-                 * keep looking since we might find a key in which the keysym
-                 * is in a lower group or level.
-                 */
-                if (group < min_group ||
-                    (group == min_group && level < min_level)) {
-                    ret = key;
-                    if (group == 0 && level == 0) {
-                        return ret;
-                    }
-                    else {
-                        min_group = group;
-                        min_level = level;
-                    }
+    group = 0;
+    do {
+        xkb_level_index_t level = 0;
+        got_one_group = false;
+        do {
+            got_one_level = false;
+            xkb_keys_foreach(key, keymap) {
+                if (group < key->num_groups &&
+                    level < XkbKeyNumLevels(key, group)) {
+                    got_one_group = got_one_level = true;
+                    if (key->groups[group].levels[level].num_syms == 1 &&
+                        key->groups[group].levels[level].u.sym == sym)
+                        return key;
                 }
             }
-        }
-    }
+            level++;
+        } while (got_one_level);
+        group++;
+    } while (got_one_group);
 
-    return ret;
+    return NULL;
 }
 
 /*
@@ -1291,8 +1285,8 @@ FindKeyForSymbol(struct xkb_keymap *keymap, xkb_keysym_t sym)
 static xkb_atom_t
 FindAutomaticType(struct xkb_context *ctx, GroupInfo *groupi)
 {
-    xkb_keysym_t sym0, sym1, sym2, sym3;
-    xkb_level_index_t width = darray_size(groupi->levels);
+    xkb_keysym_t sym0, sym1;
+    const xkb_level_index_t width = darray_size(groupi->levels);
 
 #define GET_SYM(level) \
     (darray_item(groupi->levels, level).num_syms == 0 ? \
@@ -1320,6 +1314,7 @@ FindAutomaticType(struct xkb_context *ctx, GroupInfo *groupi)
 
     if (width <= 4) {
         if (xkb_keysym_is_lower(sym0) && xkb_keysym_is_upper(sym1)) {
+            xkb_keysym_t sym2, sym3;
             sym2 = GET_SYM(2);
             sym3 = (width == 4 ? GET_SYM(3) : XKB_KEY_NoSymbol);
 

@@ -54,7 +54,7 @@ chmod a+x ./gen_tables.sh
 
 #for license notification
 mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
-cp -a %{_builddir}/%{buildsubdir}/COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
+cp -a %{_builddir}/%{buildsubdir}/LICENSE %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
 
 %post  -p /sbin/ldconfig
 

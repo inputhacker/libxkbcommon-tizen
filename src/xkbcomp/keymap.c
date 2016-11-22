@@ -136,7 +136,7 @@ ApplyInterpsToKey(struct xkb_keymap *keymap, struct xkb_key *key)
         return true;
 
     for (group = 0; group < key->num_groups; group++) {
-        for (level = 0; level < XkbKeyGroupWidth(key, group); level++) {
+        for (level = 0; level < XkbKeyNumLevels(key, group); level++) {
             const struct xkb_sym_interpret *interp;
 
             interp = FindInterpForKey(keymap, key, group, level);
@@ -202,7 +202,7 @@ UpdateDerivedKeymapFields(struct xkb_keymap *keymap)
     /* Update action modifiers. */
     xkb_keys_foreach(key, keymap)
         for (i = 0; i < key->num_groups; i++)
-            for (j = 0; j < XkbKeyGroupWidth(key, i); j++)
+            for (j = 0; j < XkbKeyNumLevels(key, i); j++)
                 UpdateActionMods(keymap, &key->groups[i].levels[j].action,
                                  key->modmap);
 
@@ -232,12 +232,9 @@ bool
 CompileKeymap(XkbFile *file, struct xkb_keymap *keymap, enum merge_mode merge)
 {
     bool ok;
-    const char *main_name;
     XkbFile *files[LAST_KEYMAP_FILE_TYPE + 1] = { NULL };
     enum xkb_file_type type;
     struct xkb_context *ctx = keymap->ctx;
-
-    main_name = file->name ? file->name : "(unnamed)";
 
     /* Collect section files and check for duplicates. */
     for (file = (XkbFile *) file->defs; file;
@@ -255,11 +252,6 @@ CompileKeymap(XkbFile *file, struct xkb_keymap *keymap, enum merge_mode merge)
                     "All sections after the first ignored\n",
                     xkb_file_type_to_string(file->file_type));
             continue;
-        }
-
-        if (!file->topName) {
-            free(file->topName);
-            file->topName = strdup(main_name);
         }
 
         files[file->file_type] = file;
@@ -287,7 +279,7 @@ CompileKeymap(XkbFile *file, struct xkb_keymap *keymap, enum merge_mode merge)
          type <= LAST_KEYMAP_FILE_TYPE;
          type++) {
         log_dbg(ctx, "Compiling %s \"%s\"\n",
-                xkb_file_type_to_string(type), files[type]->topName);
+                xkb_file_type_to_string(type), files[type]->name);
 
         ok = compile_file_fns[type](files[type], keymap, merge);
         if (!ok) {

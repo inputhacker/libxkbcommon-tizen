@@ -1,3 +1,102 @@
+libxkbcommon 0.7.0 - 2016-11-11
+==================
+
+- Added support for different "modes" of calculating consumed modifiers.
+  The existing mode, based on the XKB standard, has proven to be
+  unintuitive in various shortcut implementations.
+
+  A new mode, based on the calculation used by the GTK toolkit, is added.
+  This mode is less eager to declare a modifier as consumed.
+
+- Added a new interactive demo program using the Wayland protocol.
+  See the PACKAGING file for the new (optional) test dependencies.
+
+- Fixed a compilation error on GNU Hurd.
+
+- New API:
+  enum xkb_consumed_mode
+  XKB_CONSUMED_MODE_XKB
+  XKB_CONSUMED_MODE_GTK
+  xkb_state_key_get_consumed_mods2
+  xkb_state_mod_index_is_consumed2
+
+
+libxkbcommon 0.6.1 - 2016-04-08
+==================
+
+- Added LICENSE to distributed files in tarball releases.
+
+- Minor typo fix in xkb_keymap_get_as_string() documentation.
+
+
+libxkbcommon 0.6.0 - 2016-03-16
+==================
+
+- If the XKB_CONFIG_ROOT environment variable is set, it is used as the XKB
+  configuration root instead of the path determined at build time.
+
+- Tests and benchmarks now build correctly on OSX.
+
+- An XKB keymap provides a name for each key it defines.  Traditionally,
+  these names are limited to at most 4 characters, and are thus somewhat
+  obscure, but might still be useful (xkbcommon lifts the 4 character limit).
+
+  The new functions xkb_keymap_key_get_name() and xkb_keymap_key_by_name()
+  can be used to get the name of a key or find a key by name.  Note that
+  a key may have aliases.
+
+- Documentation improvements.
+
+- New API:
+  xkb_keymap_key_by_name()
+  xkb_keymap_key_get_name()
+
+
+libxkbcommon 0.5.0 - 2014-10-18
+==================
+
+- Added support for Compose/dead keys in a new module (included in
+  libxkbcommon). See the documentation or the
+  xkbcommon/xkbcommon-compose.h header file for more details.
+
+- Improved and reordered some sections of the documentation.
+
+- The doxygen HTML pages were made nicer to read.
+
+- Most tests now run also on non-linux platforms.
+
+- A warning is emitted by default about RMLVO values which are not used
+  during keymap compilation, which are most often a user misconfiguration.
+  For example, "terminate:ctrl_alt_backspace" instead of
+  "terminate:ctrl_alt_bksp".
+
+- Added symbol versioning for libxkbcommon and libxkbcommon-x11.
+  Note: binaries compiled against this and future versions will not be
+  able to link against the previous versions of the library.
+
+- Removed several compatablity symbols from the binary (the API isn't
+  affected). This affects binaries which
+
+  1. Were compiled against a pre-stable (<0.2.0) version of libxkbcommon, and
+  2. Are linked against the this or later version of libxkbcommon.
+
+  Such a scenario is likely to fail already.
+
+- If Xvfb is not available, the x11comp test is now correctly skipped
+  instead of hanging.
+
+- Benchmarks were moved to a separate bench/ directory.
+
+- Build fixes from OpenBSD.
+
+- Fixed a bug where key type entries such as "map[None] = Level2;" were
+  ignored.
+
+- New API:
+  XKB_COMPOSE_*
+  xkb_compose_*
+
+
 libxkbcommon 0.4.3 - 2014-08-19
 ==================
 
@@ -21,6 +120,7 @@ libxkbcommon 0.4.3 - 2014-08-19
 - Fixed memory leaks after parse errors in the XKB yacc parser.
   The fix required changes which are currently incompatible with byacc.
 
+
 libxkbcommon 0.4.2 - 2014-05-15
 ==================
 
@@ -42,6 +142,7 @@ libxkbcommon 0.4.2 - 2014-05-15
   error-handling code.
   Note: it seems impossible to trigger in the current code since the input
   size cannot exceed the required size.
+
 
 libxkbcommon 0.4.1 - 2014-03-27
 ==================
@@ -85,6 +186,7 @@ libxkbcommon 0.4.1 - 2014-03-27
     use XKB_KEYMAP_NO_FLAGS instead.
 
 - Bug fixes.
+
 
 libxkbcommon 0.4.0 - 2014-02-02
 ==================

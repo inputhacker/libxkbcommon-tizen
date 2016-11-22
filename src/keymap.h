@@ -324,7 +324,7 @@ struct xkb_group {
     bool explicit_type;
     /* Points to a type in keymap->types. */
     const struct xkb_key_type *type;
-    /* Use XkbKeyGroupWidth for the number of levels. */
+    /* Use XkbKeyNumLevels for the number of levels. */
     struct xkb_level *levels;
 };
 
@@ -432,7 +432,7 @@ XkbKey(struct xkb_keymap *keymap, xkb_keycode_t kc)
 }
 
 static inline xkb_level_index_t
-XkbKeyGroupWidth(const struct xkb_key *key, xkb_layout_index_t layout)
+XkbKeyNumLevels(const struct xkb_key *key, xkb_layout_index_t layout)
 {
     return key->groups[layout].type->num_levels;
 }
@@ -454,6 +454,9 @@ XkbEscapeMapName(char *name);
 xkb_mod_index_t
 XkbModNameToIndex(const struct xkb_mod_set *mods, xkb_atom_t name,
                   enum mod_type type);
+
+bool
+XkbLevelsSameSyms(const struct xkb_level *a, const struct xkb_level *b);
 
 xkb_layout_index_t
 XkbWrapGroupIntoRange(int32_t group,

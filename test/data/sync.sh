@@ -1,10 +1,6 @@
 #/bin/sh
 
-if [ "$TZ_SYS_RO_SHARE" = "" ]; then
-        TZ_SYS_RO_SHARE="/usr/share"
-fi
-
-XKBCONFIGROOT="${TZ_SYS_RO_SHARE}/X11/xkb"
+XKBCONFIGROOT='/usr/share/X11/xkb'
 
 if [ ! -d test/data ]; then
     echo "Run this from the top source dir"
@@ -27,6 +23,8 @@ for file in \
     symbols/capslock \
     symbols/latin \
     symbols/level5 \
+    symbols/macintosh_vndr/apple \
+    symbols/macintosh_vndr/us \
     symbols/us \
     symbols/nbsp \
     symbols/il \

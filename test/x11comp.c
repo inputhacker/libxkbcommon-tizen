@@ -28,7 +28,6 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <linux/input.h>
 
 #include "test.h"
 #include "xkbcommon/xkbcommon-x11.h"
@@ -40,23 +39,24 @@ main(void)
     struct xkb_keymap *keymap;
     xcb_connection_t *conn;
     int32_t device_id;
-    int pipefds[2];
     int ret, status;
-    char displayfd[128], display[128];
-    char *search_path, *search_path_arg, *xkb_path;
+    char display[512];
+    char *xkb_path;
     char *original, *dump;
     char *envp[] = { NULL };
-    char *xvfb_argv[] = { "Xvfb", "-displayfd", displayfd, NULL };
+    char *xvfb_argv[] = { "Xvfb", display, NULL };
     pid_t xvfb_pid;
-    char *xkbcomp_argv[] = { "xkbcomp", "-I", NULL /* search_path_arg */,
-                             NULL /* xkb_path */, display, NULL };
+    char *xkbcomp_argv[] = { "xkbcomp", "-I", NULL /* xkb_path */, display,
+                             NULL };
     pid_t xkbcomp_pid;
+
+    char *xhost = NULL;
+    int xdpy_current;
+    int xdpy_candidate;
 
     /*
      * What all of this mess does is:
-     * 1. Launch Xvfb on the next available DISPLAY. Xvfb reports the
-     *    display number to an fd passed with -displayfd once it's
-     *    initialized. We pass a pipe there to read it.
+     * 1. Launch Xvfb on available DISPLAY.
      * 2. Make an xcb connection to this display.
      * 3. Launch xkbcomp to change the keymap of the new display (doing
      *    this programmatically is major work [which we may yet do some
@@ -66,26 +66,36 @@ main(void)
      * 6. Kill the server & clean up.
      */
 
-    ret = pipe(pipefds);
-    assert(ret == 0);
+    ret = xcb_parse_display(NULL, &xhost, &xdpy_current, NULL);
+    assert(ret != 0);
+    /*
+     * IANA assigns TCP port numbers from 6000 through 6063 to X11
+     * clients.  In addition, the current XCB implementaion shows
+     * that, when an X11 client tries to establish a TCP connetion,
+     * the port number needed is specified by adding 6000 to a given
+     * display number.  So, one of reasonable ranges of xdpy_candidate
+     * is [0, 63].
+     */
+    for (xdpy_candidate = 63; xdpy_candidate >= 0; xdpy_candidate--) {
+        char *buf;
 
-    ret = snprintf(displayfd, sizeof(displayfd), "%d", pipefds[1]);
-    assert(ret >= 0 && ret < sizeof(displayfd));
-
-    ret = posix_spawnp(&xvfb_pid, "Xvfb", NULL, NULL, xvfb_argv, envp);
+        if (xdpy_candidate == xdpy_current) {
+            continue;
+        }
+        snprintf(display, sizeof(display), "%s:%d", xhost, xdpy_candidate);
+        ret = posix_spawnp(&xvfb_pid, "Xvfb", NULL, NULL, xvfb_argv, envp);
+        if (ret == 0) {
+            break;
+        }
+    }
+    free(xhost);
     if (ret != 0) {
         ret = SKIP_TEST;
         goto err_ctx;
     }
 
-    display[0] = ':';
-    ret = read(pipefds[0], display + 1, sizeof(display) - 1);
-    assert(ret > 0 && 1 + ret < sizeof(display) - 1);
-    if (display[ret] == '\n')
-        display[ret] = '\0';
-    display[1 + ret] = '\0';
-    close(pipefds[0]);
-    close(pipefds[1]);
+    /* Wait for Xvfb fully waking up to accept a connection from a client. */
+    sleep(1);
 
     conn = xcb_connect(display, NULL);
     if (xcb_connection_has_error(conn)) {
@@ -105,15 +115,9 @@ main(void)
     assert(device_id != -1);
 
     xkb_path = test_get_path("keymaps/host.xkb");
-    search_path = test_get_path("");
-    assert(search_path);
-    ret = asprintf(&search_path_arg, "-I%s", search_path);
     assert(ret >= 0);
-    xkbcomp_argv[2] = search_path_arg;
-    xkbcomp_argv[3] = xkb_path;
+    xkbcomp_argv[2] = xkb_path;
     ret = posix_spawnp(&xkbcomp_pid, "xkbcomp", NULL, NULL, xkbcomp_argv, envp);
-    free(search_path_arg);
-    free(search_path);
     free(xkb_path);
     if (ret != 0) {
         ret = SKIP_TEST;
@@ -135,8 +139,7 @@ main(void)
     dump = xkb_keymap_get_as_string(keymap, XKB_KEYMAP_USE_ORIGINAL_FORMAT);
     assert(dump);
 
-    ret = streq(original, dump);
-    if (!ret) {
+    if (!streq(original, dump)) {
         fprintf(stderr,
                 "round-trip test failed: dumped map differs from original\n");
         fprintf(stderr, "length: dumped %lu, original %lu\n",

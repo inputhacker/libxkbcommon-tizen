@@ -328,6 +328,12 @@ xkb_types "complete" {
 		level_name[Level1]= "Base";
 		level_name[Level2]= "Shift+Alt";
 	};
+	type "PC_SUPER_LEVEL2" {
+		modifiers= Mod4;
+		map[Mod4]= Level2;
+		level_name[Level1]= "Base";
+		level_name[Level2]= "Super";
+	};
 	type "PC_CONTROL_LEVEL2" {
 		modifiers= Control;
 		map[Control]= Level2;
@@ -575,19 +581,6 @@ xkb_types "complete" {
 		level_name[Level3]= "Alt Base";
 		level_name[Level4]= "Shift Alt";
 		level_name[Level5]= "Lock";
-	};
-	type "FOUR_LEVEL_KEYPAD" {
-		modifiers= Shift+NumLock+LevelThree;
-		map[Shift]= Level2;
-		map[NumLock]= Level2;
-		map[LevelThree]= Level3;
-		map[Shift+LevelThree]= Level4;
-		map[NumLock+LevelThree]= Level4;
-		map[Shift+NumLock+LevelThree]= Level3;
-		level_name[Level1]= "Base";
-		level_name[Level2]= "Number";
-		level_name[Level3]= "Alt Base";
-		level_name[Level4]= "Alt Number";
 	};
 	type "FOUR_LEVEL_KEYPAD" {
 		modifiers= Shift+NumLock+LevelThree;
@@ -1664,20 +1657,13 @@ xkb_symbols "pc_us_pt_2_us_3_inet(evdev)_group(shift_caps_toggle)_compose(ralt)"
 	key <I244>               {	[     XF86Battery ] };
 	key <I245>               {	[   XF86Bluetooth ] };
 	key <I246>               {	[        XF86WLAN ] };
-	modifier_map Control { <LCTL> };
-	modifier_map Shift { <LFSH> };
-	modifier_map Shift { <RTSH> };
-	modifier_map Mod1 { <LALT> };
+	modifier_map Shift { <LFSH>, <RTSH> };
 	modifier_map Lock { <CAPS> };
+	modifier_map Control { <LCTL>, <RCTL> };
+	modifier_map Mod1 { <LALT>, <META> };
 	modifier_map Mod2 { <NMLK> };
-	modifier_map Mod5 { <LVL3> };
-	modifier_map Control { <RCTL> };
-	modifier_map Mod4 { <LWIN> };
-	modifier_map Mod4 { <RWIN> };
-	modifier_map Mod5 { <MDSW> };
-	modifier_map Mod1 { <META> };
-	modifier_map Mod4 { <SUPR> };
-	modifier_map Mod4 { <HYPR> };
+	modifier_map Mod4 { <LWIN>, <RWIN>, <SUPR>, <HYPR> };
+	modifier_map Mod5 { <LVL3>, <MDSW> };
 };
 
 };

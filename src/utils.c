@@ -32,13 +32,16 @@
 #include <sys/types.h>
 
 bool
-map_file(FILE *file, const char **string_out, size_t *size_out)
+map_file(FILE *file, char **string_out, size_t *size_out)
 {
     struct stat stat_buf;
-    const int fd = fileno(file);
+    int fd;
     char *string;
 
     /* Make sure to keep the errno on failure! */
+    fd = fileno(file);
+    if (fd < 0)
+        return false;
 
     if (fstat(fd, &stat_buf) != 0)
         return false;
@@ -53,15 +56,15 @@ map_file(FILE *file, const char **string_out, size_t *size_out)
 }
 
 void
-unmap_file(const char *str, size_t size)
+unmap_file(char *str, size_t size)
 {
-    munmap(UNCONSTIFY(str), size);
+    munmap(str, size);
 }
 
 #else
 
 bool
-map_file(FILE *file, const char **string_out, size_t *size_out)
+map_file(FILE *file, char **string_out, size_t *size_out)
 {
     long ret;
     size_t ret_s;
@@ -99,9 +102,9 @@ map_file(FILE *file, const char **string_out, size_t *size_out)
 }
 
 void
-unmap_file(const char *str, size_t size)
+unmap_file(char *str, size_t size)
 {
-    free(UNCONSTIFY(str));
+    free(str);
 }
 
 #endif

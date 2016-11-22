@@ -72,7 +72,7 @@ xkb_keymap_unref(struct xkb_keymap *keymap)
             if (key->groups) {
                 for (unsigned i = 0; i < key->num_groups; i++) {
                     if (key->groups[i].levels) {
-                        for (unsigned j = 0; j < XkbKeyGroupWidth(key, i); j++)
+                        for (unsigned j = 0; j < XkbKeyNumLevels(key, i); j++)
                             if (key->groups[i].levels[j].num_syms > 1)
                                 free(key->groups[i].levels[j].u.syms);
                         free(key->groups[i].levels);
@@ -363,7 +363,7 @@ xkb_keymap_num_levels_for_key(struct xkb_keymap *keymap, xkb_keycode_t kc,
     if (layout == XKB_LAYOUT_INVALID)
         return 0;
 
-    return XkbKeyGroupWidth(key, layout);
+    return XkbKeyNumLevels(key, layout);
 }
 
 /**
@@ -429,7 +429,7 @@ xkb_keymap_key_get_syms_by_level(struct xkb_keymap *keymap,
     if (layout == XKB_LAYOUT_INVALID)
         goto err;
 
-    if (level >= XkbKeyGroupWidth(key, layout))
+    if (level >= XkbKeyNumLevels(key, layout))
         goto err;
 
     num_syms = key->groups[layout].levels[level].num_syms;
@@ -470,6 +470,40 @@ xkb_keymap_key_for_each(struct xkb_keymap *keymap, xkb_keymap_key_iter_t iter,
         iter(keymap, key->keycode, data);
 }
 
+XKB_EXPORT const char *
+xkb_keymap_key_get_name(struct xkb_keymap *keymap, xkb_keycode_t kc)
+{
+    const struct xkb_key *key = XkbKey(keymap, kc);
+
+    if (!key)
+        return NULL;
+
+    return xkb_atom_text(keymap->ctx, key->name);
+}
+
+XKB_EXPORT xkb_keycode_t
+xkb_keymap_key_by_name(struct xkb_keymap *keymap, const char *name)
+{
+    struct xkb_key *key;
+    xkb_atom_t atom;
+
+    atom = xkb_atom_lookup(keymap->ctx, name);
+    if (atom) {
+        xkb_atom_t ratom = XkbResolveKeyAlias(keymap, atom);
+        if (ratom)
+            atom = ratom;
+    }
+    if (!atom)
+        return XKB_KEYCODE_INVALID;
+
+    xkb_keys_foreach(key, keymap) {
+        if (key->name == atom)
+            return key->keycode;
+    }
+
+    return XKB_KEYCODE_INVALID;
+}
+
 /**
  * Simple boolean specifying whether or not the key should repeat.
  */
@@ -482,18 +516,4 @@ xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc)
         return 0;
 
     return key->repeats;
-}
-
-XKB_EXPORT int
-xkb_keymap_key_set_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc, int enable)
-{
-    struct xkb_key *key = XkbKey(keymap, kc);
-
-    if (!key)
-        return 0;
-
-    key->repeats = !!enable;
-    key->explicit |= EXPLICIT_REPEAT;
-
-    return 1;
 }

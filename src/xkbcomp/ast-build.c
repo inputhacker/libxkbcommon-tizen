@@ -304,6 +304,7 @@ VarDef *
 BoolVarCreate(xkb_atom_t ident, bool set)
 {
     ExprDef *name, *value;
+    VarDef *def;
     if (!(name = ExprCreateIdent(ident))) {
         return NULL;
     }
@@ -311,7 +312,12 @@ BoolVarCreate(xkb_atom_t ident, bool set)
         FreeStmt((ParseCommon *) name);
         return NULL;
     }
-    return VarCreate(name, value);
+    if (!(def = VarCreate(name, value))) {
+        FreeStmt((ParseCommon *) name);
+        FreeStmt((ParseCommon *) value);
+        return NULL;
+    }
+    return def;
 }
 
 InterpDef *
@@ -466,12 +472,8 @@ IncludeCreate(struct xkb_context *ctx, char *str, enum merge_mode merge)
             incl = incl->next_incl;
         }
 
-        if (!incl) {
-            log_wsgo(ctx,
-                     "Allocation failure in IncludeCreate; "
-                     "Using only part of the include\n");
+        if (!incl)
             break;
-        }
 
         incl->common.type = STMT_INCLUDE;
         incl->common.next = NULL;
@@ -514,8 +516,7 @@ XkbFileCreate(enum xkb_file_type type, char *name, ParseCommon *defs,
 
     XkbEscapeMapName(name);
     file->file_type = type;
-    file->topName = strdup_safe(name);
-    file->name = name;
+    file->name = name ? name : strdup("(unnamed)");
     file->defs = defs;
     file->flags = flags;
 
@@ -705,7 +706,6 @@ FreeXkbFile(XkbFile *file)
         }
 
         free(file->name);
-        free(file->topName);
         free(file);
         file = next;
     }

@@ -377,8 +377,6 @@ static void
 MergeIncludedCompatMaps(CompatInfo *into, CompatInfo *from,
                         enum merge_mode merge)
 {
-    SymInterpInfo *si;
-
     if (from->errorCount > 0) {
         into->errorCount += from->errorCount;
         return;
@@ -396,6 +394,7 @@ MergeIncludedCompatMaps(CompatInfo *into, CompatInfo *from,
         darray_init(from->interps);
     }
     else {
+        SymInterpInfo *si;
         darray_foreach(si, from->interps) {
             si->merge = (merge == MERGE_DEFAULT ? si->merge : merge);
             if (!AddInterp(into, si, false))
@@ -792,7 +791,7 @@ HandleCompatMapFile(CompatInfo *info, XkbFile *file, enum merge_mode merge)
 
         if (info->errorCount > 10) {
             log_err(info->ctx,
-                    "Abandoning compatibility map \"%s\"\n", file->topName);
+                    "Abandoning compatibility map \"%s\"\n", file->name);
             break;
         }
     }

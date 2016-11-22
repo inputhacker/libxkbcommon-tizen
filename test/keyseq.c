@@ -21,8 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include <linux/input.h>
-
+#include "evdev-scancodes.h"
 #include "test.h"
 
 int
@@ -440,6 +439,16 @@ main(void)
                         KEY_H,         BOTH, XKB_KEY_h,                 FINISH));
 
     xkb_keymap_unref(keymap);
+    keymap = test_compile_rules(ctx, "evdev", "", "us", "euro", "");
+    assert(keymap);
+
+    assert(test_key_seq(keymap,
+                        KEY_5,         BOTH, XKB_KEY_5,                 NEXT,
+                        KEY_RIGHTALT,  DOWN, XKB_KEY_ISO_Level3_Shift,  NEXT,
+                        KEY_5,         BOTH, XKB_KEY_EuroSign,          NEXT,
+                        KEY_RIGHTALT,  UP,   XKB_KEY_ISO_Level3_Shift,  FINISH));
+
+    xkb_keymap_unref(keymap);
     keymap = test_compile_file(ctx, "keymaps/unbound-vmod.xkb");
     assert(keymap);
 
@@ -448,6 +457,26 @@ main(void)
                         KEY_Z,         BOTH, XKB_KEY_y,                 NEXT,
                         KEY_MINUS,     BOTH, XKB_KEY_ssharp,            NEXT,
                         KEY_Z,         BOTH, XKB_KEY_y,                 FINISH));
+
+    xkb_keymap_unref(keymap);
+    keymap = test_compile_rules(ctx, "evdev", "applealu_ansi", "us", "",
+                                "terminate:ctrl_alt_bksp");
+    assert(keymap);
+
+    assert(test_key_seq(keymap,
+                        KEY_5,         BOTH, XKB_KEY_5,                 NEXT,
+                        KEY_KP1,       BOTH, XKB_KEY_KP_1,              NEXT,
+                        KEY_NUMLOCK,   BOTH, XKB_KEY_Clear,             NEXT,
+                        KEY_LEFTSHIFT, DOWN, XKB_KEY_Shift_L,           NEXT,
+                        KEY_KP1,       BOTH, XKB_KEY_KP_1,              NEXT,
+                        KEY_LEFTSHIFT, UP,   XKB_KEY_Shift_L,           NEXT,
+                        KEY_CAPSLOCK,  BOTH, XKB_KEY_Caps_Lock,         NEXT,
+                        KEY_KP1,       BOTH, XKB_KEY_KP_1,              NEXT,
+                        KEY_LEFTSHIFT, DOWN, XKB_KEY_Shift_L,           NEXT,
+                        KEY_KP1,       BOTH, XKB_KEY_KP_1,              NEXT,
+                        KEY_LEFTSHIFT, UP,   XKB_KEY_Shift_L,           NEXT,
+                        KEY_CAPSLOCK,  BOTH, XKB_KEY_Caps_Lock,         NEXT,
+                        KEY_A,         BOTH, XKB_KEY_a,                 FINISH));
 
     xkb_keymap_unref(keymap);
     xkb_context_unref(ctx);
