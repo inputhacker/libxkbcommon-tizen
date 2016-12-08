@@ -46,6 +46,8 @@ chmod a+x ./gen_tables.sh
 ./gen_tables.sh
 
 %build
+export CFLAGS=$( echo $CFLAGS | sed -e "s/-flto//g" )
+export CXXFLAGS=$( echo $CXXFLAGS | sed -e "s/-flto//g" )
 %autogen --disable-static --disable-x11
 %__make %{?_smp_mflags} V=1;
 
