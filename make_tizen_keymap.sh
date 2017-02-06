@@ -4,7 +4,7 @@ if [ "$TZ_SYS_RO_SHARE" = "" ]; then
 	TZ_SYS_RO_SHARE="/usr/share"
 fi
 
-KEYMAP_FILE_PATH="${TZ_SYS_RO_SHARE}/X11/xkb/tizen_key_layout.txt"
+KEYMAP_FILE_PATH="${TZ_SYS_RO_SHARE}/X11/xkb/new_symbols.txt"
 BASE_KEYSYM="0x10090000"
 TARGET_HEADER_FILE="./xkbcommon/tizen_keymap.h"
 TEMP_TEXT_FILE="./temp_file.txt"
@@ -15,16 +15,16 @@ BASE_KEYSYM_DEC=`python -c "print int('$BASE_KEYSYM', 16)"`
 
 if [ -e ${KEYMAP_FILE_PATH} ]
 then
-	echo "We have a key layout file: ${KEYMAP_FILE_PATH}"
+	echo "We have a new defined key symbols file: ${KEYMAP_FILE_PATH}"
 else
-	echo "We don't have a key layout file: ${KEYMAP_FILE_PATH}"
+	echo "We don't have a new defined key symbols file: ${KEYMAP_FILE_PATH}"
 	exit
 fi
 
 echo "Generate a tizen keymap header file"
 touch $NEW_DEFINE_SYM_FILE
 
-while read KEYNAME KEYCODE
+while read KEYNAME
 do
 	KEYSYM="XKB_KEY_${KEYNAME}"
 	grep -rn "${KEYSYM}" $KEYMAP_HEADER_FILE > $TEMP_TEXT_FILE
