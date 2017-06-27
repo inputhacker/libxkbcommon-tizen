@@ -17,6 +17,7 @@ BuildRequires:  libtool >= 2
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
 BuildRequires:  python
 BuildRequires:  xkb-tizen-data
+BuildRequires:  gawk
 
 %global TZ_SYS_RO_SHARE  %{?TZ_SYS_RO_SHARE:%TZ_SYS_RO_SHARE}%{!?TZ_SYS_RO_SHARE:/usr/share}
 
