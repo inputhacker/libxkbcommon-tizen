@@ -487,7 +487,7 @@ xkb_keymap_key_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc)
 XKB_EXPORT int
 xkb_keymap_key_set_repeats(struct xkb_keymap *keymap, xkb_keycode_t kc, int enable)
 {
-    struct xkb_key *key = XkbKey(keymap, kc);
+    struct xkb_key *key = (struct xkb_key *)XkbKey(keymap, kc);
 
     if (!key)
         return 0;
