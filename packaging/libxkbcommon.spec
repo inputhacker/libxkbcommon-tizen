@@ -1,5 +1,5 @@
 Name:           libxkbcommon
-Version:        0.4.3
+Version:        0.7.2
 Release:        0
 License:        MIT
 Summary:        Wayland libxkbcommon library
@@ -47,6 +47,7 @@ chmod a+x ./gen_tables.sh
 ./gen_tables.sh
 
 %build
+chmod a+x ./autogen.sh
 %autogen --disable-static --disable-x11
 %__make %{?_smp_mflags} V=1;
 
