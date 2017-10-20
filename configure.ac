@@ -22,7 +22,7 @@ dnl Process this file with autoconf to create configure.
 
 # Initialize Autoconf
 AC_PREREQ([2.62])
-AC_INIT([libxkbcommon], [0.4.1],
+AC_INIT([libxkbcommon], [0.7.2],
         [https://bugs.freedesktop.org/enter_bug.cgi?product=libxkbcommon],
         [libxkbcommon], [http://xkbcommon.org])
 AC_CONFIG_SRCDIR([Makefile.am])
@@ -68,12 +68,6 @@ AS_IF([test ! -f "src/xkbcomp/parser.c" -a "x$YACC_INST" = x], [
 ])
 
 # Checks for library functions.
-AC_CHECK_FUNCS([strcasecmp strncasecmp])
-AS_IF([test "x$ac_cv_func_strcasecmp" = xno -o \
-            "x$ac_cv_func_strncasecmp" = xno], [
-    AC_MSG_ERROR([C library does not support strcasecmp/strncasecmp])
-])
-
 AC_CHECK_FUNCS([eaccess euidaccess mmap])
 
 AC_CHECK_FUNCS([secure_getenv __secure_getenv])
@@ -83,6 +77,7 @@ AS_IF([test "x$ac_cv_func_secure_getenv" = xno -a \
 ])
 
 AX_GCC_BUILTIN(__builtin_expect)
+AX_GCC_BUILTIN(__builtin_popcount)
 
 # Some tests use Linux-specific headers
 AC_CHECK_HEADER([linux/input.h])
@@ -90,9 +85,26 @@ AM_CONDITIONAL(BUILD_LINUX_TESTS, [test "x$ac_cv_header_linux_input_h" = xyes])
 
 XORG_TESTSET_CFLAG([BASE_CFLAGS], [-fvisibility=hidden])
 XORG_TESTSET_CFLAG([BASE_CFLAGS], [-Wextra -Wno-unused-parameter -Wno-missing-field-initializers])
+XORG_TESTSET_CFLAG([BASE_CFLAGS], [-Wdocumentation])
 
-XORG_CHECK_LINKER_FLAGS([-Wl,--no-undefined], [have_no_undefined=yes])
+# OpenBSD does not have DT_NEEDED entries for libc by design
+# so when these flags are passed to ld via libtool the checks will fail
+case "$host_os" in
+openbsd*)
+    ;;
+*)
+    XORG_CHECK_LINKER_FLAGS([-Wl,--no-undefined], [have_no_undefined=yes]) ;;
+esac
 AM_CONDITIONAL([HAVE_NO_UNDEFINED], [test "x$have_no_undefined" = xyes])
+
+XORG_CHECK_LINKER_FLAGS([-Wl,--version-script="$srcdir/xkbcommon.map"], [have_version_script=yes])
+AM_CONDITIONAL([HAVE_VERSION_SCRIPT], [test "x$have_version_script" = xyes])
+
+AC_CHECK_LIB(rt, clock_gettime,
+    [AC_SUBST(RT_LIBS, "-lrt")],
+    [AC_SUBST(RT_LIBS, "")],
+    [-lrt])
+AC_CHECK_FUNCS([clock_gettime])
 
 # Define a configuration option for the XKB config root
 xkb_base=`$PKG_CONFIG --variable=xkb_base xkeyboard-config`
@@ -105,6 +117,14 @@ AC_ARG_WITH([xkb_config_root],
     [XKBCONFIGROOT="$withval"],
     [XKBCONFIGROOT="$xkb_base"])
 AC_SUBST([XKBCONFIGROOT])
+
+# Define a configuration option for the X locale directory for compose
+AC_ARG_WITH([x_locale_root],
+    [AS_HELP_STRING([--with-x-locale-root=<path>],
+        [Set X locale root (default: $datadir/X11/locale)])],
+    [XLOCALEDIR="$withval"],
+    [XLOCALEDIR="$datadir/X11/locale"])
+AC_SUBST([XLOCALEDIR])
 
 AC_ARG_WITH([default_rules],
     [AS_HELP_STRING([--with-default-rules=<path>],
@@ -134,7 +154,7 @@ AC_ARG_WITH([default_variant],
     [AS_HELP_STRING([--with-default-variant=<path>],
         [Default XKB variant (default: (none))])],
     [DEFAULT_XKB_VARIANT="$withval"],
-    [DEFAULT_XKB_VARAINT=])
+    [DEFAULT_XKB_VARIANT=])
 AS_IF([test "x$DEFAULT_XKB_VARIANT" != x], [
     AC_DEFINE_UNQUOTED([DEFAULT_XKB_VARIANT], ["$DEFAULT_XKB_VARIANT"],
                        [Default XKB variant])
@@ -153,20 +173,37 @@ AS_IF([test "x$DEFAULT_XKB_OPTIONS" != x], [
 AC_ARG_ENABLE([x11],
     [AS_HELP_STRING([--disable-x11],
         [Disable support for creating keymaps with the X11 protocol (default: enabled)])],
-    [enable_x11=no], [enable_x11=yes])
+    [], [enable_x11=yes])
 AS_IF([test "x$enable_x11" = xyes], [
     PKG_CHECK_MODULES([XCB_XKB], [xcb xcb-xkb >= 1.10], [],
         [AC_MSG_ERROR([xkbcommon-x11 requires xcb-xkb >= 1.10 which was not found. \
 You can disable X11 support with --disable-x11.])])
-])
+], [enable_x11=no])
 AM_CONDITIONAL([ENABLE_X11], [test "x$enable_x11" = xyes])
+
+WAYLAND_PKGS="wayland-client >= 1.2.0 wayland-protocols >= 1.7 wayland-scanner"
+AC_ARG_ENABLE([wayland],
+    [AS_HELP_STRING([--disable-wayland],
+        [Disable support for Wayland utility programs (default: auto)])],
+    [], [enable_wayland=auto])
+AS_IF([test "x$enable_wayland" = xauto], [
+    PKG_CHECK_EXISTS($WAYLAND_PKGS, [enable_wayland=yes], [enable_wayland=no])],
+    [])
+AS_IF([test "x$enable_wayland" = xyes], [
+    PKG_CHECK_MODULES([WAYLAND], $WAYLAND_PKGS, [],
+        [AC_MSG_ERROR([Wayland utilities require libwayland-client >= 1.2 which was not found. \
+You can disable Wayland support with --disable-wayland.])])
+    AC_PATH_PROG([wayland_scanner], [wayland-scanner])
+    wayland_scanner=`$PKG_CONFIG --variable=wayland_scanner wayland-scanner`
+    ac_wayland_protocols_pkgdatadir=`$PKG_CONFIG --variable=pkgdatadir wayland-protocols`
+    AC_SUBST(WAYLAND_PROTOCOLS_DATADIR, $ac_wayland_protocols_pkgdatadir)
+], [enable_wayland=no])
+AM_CONDITIONAL([ENABLE_WAYLAND], [test "x$enable_wayland" = xyes])
 
 AC_CONFIG_FILES([
     Makefile
-    xkbcommon-uninstalled.pc
     xkbcommon.pc
     xkbcommon-x11.pc
-    xkbcommon-x11-uninstalled.pc
     doc/Doxyfile
 ])
 AC_OUTPUT
@@ -176,6 +213,7 @@ AC_MSG_RESULT([
 
         libxkbcommon:            yes
         libxkbcommon-x11:        ${enable_x11}
+        Wayland utilities:       ${enable_wayland}
         documentation:           ${build_docs}
 
         default XKB rules:       ${DEFAULT_XKB_RULES}
@@ -187,5 +225,7 @@ AC_MSG_RESULT([
         prefix:                  ${prefix}
         includedir:              ${includedir}
         lib dir:                 ${libdir}
+        datarootdir:             ${datarootdir}
         XKB config root:         ${XKBCONFIGROOT}
+        X11 locale root:         ${XLOCALEDIR}
 ])

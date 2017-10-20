@@ -44,9 +44,12 @@ main(void)
     assert(test_file(ctx, "keymaps/comprehensive-plus-geom.xkb"));
     assert(test_file(ctx, "keymaps/no-types.xkb"));
     assert(test_file(ctx, "keymaps/quartz.xkb"));
+    assert(test_file(ctx, "keymaps/no-aliases.xkb"));
 
     assert(!test_file(ctx, "keymaps/divide-by-zero.xkb"));
     assert(!test_file(ctx, "keymaps/bad.xkb"));
+    assert(!test_file(ctx, "keymaps/syntax-error.xkb"));
+    assert(!test_file(ctx, "keymaps/syntax-error2.xkb"));
     assert(!test_file(ctx, "does not exist"));
 
     /* Test response to invalid flags and formats. */

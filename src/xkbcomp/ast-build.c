@@ -226,16 +226,16 @@ ExprAppendKeysymList(ExprDef *expr, xkb_keysym_t sym)
 ExprDef *
 ExprAppendMultiKeysymList(ExprDef *expr, ExprDef *append)
 {
+    xkb_keysym_t *syms;
     unsigned nSyms = darray_size(expr->keysym_list.syms);
     unsigned numEntries = darray_size(append->keysym_list.syms);
 
     darray_append(expr->keysym_list.symsMapIndex, nSyms);
     darray_append(expr->keysym_list.symsNumEntries, numEntries);
-    darray_append_items(expr->keysym_list.syms,
-                        darray_mem(append->keysym_list.syms, 0), numEntries);
+    darray_steal(append->keysym_list.syms, &syms, NULL);
+    darray_append_items(expr->keysym_list.syms, syms, numEntries);
 
-    darray_resize(append->keysym_list.syms, 0);
-    FreeStmt(&append->common);
+    FreeStmt((ParseCommon *) &append);
 
     return expr;
 }
@@ -303,8 +303,21 @@ VarCreate(ExprDef *name, ExprDef *value)
 VarDef *
 BoolVarCreate(xkb_atom_t ident, bool set)
 {
-    return VarCreate((ExprDef *) ExprCreateIdent(ident),
-                     (ExprDef *) ExprCreateBoolean(set));
+    ExprDef *name, *value;
+    VarDef *def;
+    if (!(name = ExprCreateIdent(ident))) {
+        return NULL;
+    }
+    if (!(value = ExprCreateBoolean(set))) {
+        FreeStmt((ParseCommon *) name);
+        return NULL;
+    }
+    if (!(def = VarCreate(name, value))) {
+        FreeStmt((ParseCommon *) name);
+        FreeStmt((ParseCommon *) value);
+        return NULL;
+    }
+    return def;
 }
 
 InterpDef *
@@ -318,6 +331,7 @@ InterpCreate(xkb_keysym_t sym, ExprDef *match)
     def->common.next = NULL;
     def->sym = sym;
     def->match = match;
+    def->def = NULL;
 
     return def;
 }
@@ -458,12 +472,8 @@ IncludeCreate(struct xkb_context *ctx, char *str, enum merge_mode merge)
             incl = incl->next_incl;
         }
 
-        if (!incl) {
-            log_wsgo(ctx,
-                     "Allocation failure in IncludeCreate; "
-                     "Using only part of the include\n");
+        if (!incl)
             break;
-        }
 
         incl->common.type = STMT_INCLUDE;
         incl->common.next = NULL;
@@ -506,8 +516,7 @@ XkbFileCreate(enum xkb_file_type type, char *name, ParseCommon *defs,
 
     XkbEscapeMapName(name);
     file->file_type = type;
-    file->topName = strdup_safe(name);
-    file->name = name;
+    file->name = name ? name : strdup("(unnamed)");
     file->defs = defs;
     file->flags = flags;
 
@@ -697,7 +706,6 @@ FreeXkbFile(XkbFile *file)
         }
 
         free(file->name);
-        free(file->topName);
         free(file);
         file = next;
     }

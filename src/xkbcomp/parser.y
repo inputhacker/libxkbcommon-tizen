@@ -31,9 +31,10 @@
  */
 
 %{
-#include "xkbcomp-priv.h"
-#include "ast-build.h"
-#include "parser-priv.h"
+#include "xkbcomp/xkbcomp-priv.h"
+#include "xkbcomp/ast-build.h"
+#include "xkbcomp/parser-priv.h"
+#include "scanner-utils.h"
 
 struct parser_param {
     struct xkb_context *ctx;
@@ -55,21 +56,21 @@ _xkbcommon_error(struct parser_param *param, const char *msg)
 }
 
 static bool
-resolve_keysym(const char *str, xkb_keysym_t *sym_rtrn)
+resolve_keysym(const char *name, xkb_keysym_t *sym_rtrn)
 {
     xkb_keysym_t sym;
 
-    if (!str || istreq(str, "any") || istreq(str, "nosymbol")) {
+    if (!name || istreq(name, "any") || istreq(name, "nosymbol")) {
         *sym_rtrn = XKB_KEY_NoSymbol;
         return true;
     }
 
-    if (istreq(str, "none") || istreq(str, "voidsymbol")) {
+    if (istreq(name, "none") || istreq(name, "voidsymbol")) {
         *sym_rtrn = XKB_KEY_VoidSymbol;
         return true;
     }
 
-    sym = xkb_keysym_from_name(str, XKB_KEYSYM_NO_FLAGS);
+    sym = xkb_keysym_from_name(name, XKB_KEYSYM_NO_FLAGS);
     if (sym != XKB_KEY_NoSymbol) {
         *sym_rtrn = sym;
         return true;
@@ -163,7 +164,7 @@ resolve_keysym(const char *str, xkb_keysym_t *sym_rtrn)
         int64_t          num;
         enum xkb_file_type file_type;
         char            *str;
-        xkb_atom_t      sval;
+        xkb_atom_t      atom;
         enum merge_mode merge;
         enum xkb_map_flags mapFlags;
         xkb_keysym_t    keysym;
@@ -186,14 +187,14 @@ resolve_keysym(const char *str, xkb_keysym_t *sym_rtrn)
 
 %type <num>     INTEGER FLOAT
 %type <str>     IDENT STRING
-%type <sval>    KEYNAME
+%type <atom>    KEYNAME
 %type <num>     KeyCode
 %type <ival>    Number Integer Float SignedNumber DoodadType
 %type <merge>   MergeMode OptMergeMode
 %type <file_type> XkbCompositeType FileType
 %type <mapFlags> Flag Flags OptFlags
 %type <str>     MapName OptMapName
-%type <sval>    FieldSpec Ident Element String
+%type <atom>    FieldSpec Ident Element String
 %type <keysym>  KeySym
 %type <any>     DeclList Decl
 %type <expr>    OptExprList ExprList Expr Term Lhs Terminal ArrayInit KeySyms
@@ -214,6 +215,14 @@ resolve_keysym(const char *str, xkb_keysym_t *sym_rtrn)
 %type <geom>    DoodadDecl
 %type <file>    XkbFile XkbMapConfigList XkbMapConfig
 %type <file>    XkbCompositeMap
+
+%destructor { FreeStmt((ParseCommon *) $$); }
+    <any> <expr> <var> <vmod> <interp> <keyType> <syms> <modMask> <groupCompat>
+    <ledMap> <ledName> <keyCode> <keyAlias>
+/* The destructor also runs on the start symbol when the parser *succeeds*.
+ * The `if` here catches this case. */
+%destructor { if (!param->rtrn) FreeXkbFile($$); } <file>
+%destructor { free($$); } <str>
 
 %%
 
@@ -476,7 +485,7 @@ LedNameDecl:            INDICATOR Integer EQUALS Expr SEMI
 ShapeDecl       :       SHAPE String OBRACE OutlineList CBRACE SEMI
                         { $$ = NULL; }
                 |       SHAPE String OBRACE CoordList CBRACE SEMI
-                        { $$ = NULL; }
+                        { (void) $4; $$ = NULL; }
                 ;
 
 SectionDecl     :       SECTION String OBRACE SectionBody CBRACE SEMI
@@ -536,17 +545,17 @@ OutlineList     :       OutlineList COMMA OutlineInList
                 ;
 
 OutlineInList   :       OBRACE CoordList CBRACE
-                        { $$ = NULL; }
+                        { (void) $2; $$ = NULL; }
                 |       Ident EQUALS OBRACE CoordList CBRACE
-                        { $$ = NULL; }
+                        { (void) $4; $$ = NULL; }
                 |       Ident EQUALS Expr
                         { FreeStmt((ParseCommon *) $3); $$ = NULL; }
                 ;
 
 CoordList       :       CoordList COMMA Coord
-                        { $$ = NULL; }
+                        { (void) $1; (void) $3; $$ = NULL; }
                 |       Coord
-                        { $$ = NULL; }
+                        { (void) $1; $$ = NULL; }
                 ;
 
 Coord           :       OBRACKET SignedNumber COMMA SignedNumber CBRACKET
@@ -704,14 +713,14 @@ KeySyms         :       OBRACE KeySymList CBRACE
 KeySym          :       IDENT
                         {
                             if (!resolve_keysym($1, &$$))
-                                parser_warn(param, "unrecognized keysym");
+                                parser_warn(param, "unrecognized keysym \"%s\"", $1);
                             free($1);
                         }
                 |       SECTION { $$ = XKB_KEY_section; }
                 |       Integer
                         {
                             if ($1 < 0) {
-                                parser_warn(param, "unrecognized keysym");
+                                parser_warn(param, "unrecognized keysym \"%d\"", $1);
                                 $$ = XKB_KEY_NoSymbol;
                             }
                             else if ($1 < 10) {      /* XKB_KEY_0 .. XKB_KEY_9 */
@@ -721,7 +730,7 @@ KeySym          :       IDENT
                                 char buf[17];
                                 snprintf(buf, sizeof(buf), "0x%x", $1);
                                 if (!resolve_keysym(buf, &$$)) {
-                                    parser_warn(param, "unrecognized keysym");
+                                    parser_warn(param, "unrecognized keysym \"%s\"", buf);
                                     $$ = XKB_KEY_NoSymbol;
                                 }
                             }
@@ -769,6 +778,7 @@ parse(struct xkb_context *ctx, struct scanner *scanner, const char *map)
     struct parser_param param = {
         .scanner = scanner,
         .ctx = ctx,
+        .rtrn = NULL,
     };
 
     /*
@@ -798,12 +808,19 @@ parse(struct xkb_context *ctx, struct scanner *scanner, const char *map)
                 FreeXkbFile(param.rtrn);
             }
         }
+        param.rtrn = NULL;
     }
 
     if (ret != 0) {
         FreeXkbFile(first);
         return NULL;
     }
+
+    if (first)
+        log_vrb(ctx, 5,
+                "No map in include statement, but \"%s\" contains several; "
+                "Using first defined map, \"%s\"\n",
+                scanner->file_name, first->name);
 
     return first;
 }
