@@ -170,6 +170,13 @@ AS_IF([test "x$DEFAULT_XKB_OPTIONS" != x], [
                        [Default XKB options])
 ])
 
+AC_ARG_WITH(tizen_profile,
+    [AS_HELP_STRING([--with-tizen-profile=PROFILE],
+        [Tizen Profile (default: (common))])],
+    tizen_profile="$withval",
+    tizen_profile="common"
+)
+
 AC_ARG_ENABLE([x11],
     [AS_HELP_STRING([--disable-x11],
         [Disable support for creating keymaps with the X11 protocol (default: enabled)])],
@@ -199,6 +206,14 @@ You can disable Wayland support with --disable-wayland.])])
     AC_SUBST(WAYLAND_PROTOCOLS_DATADIR, $ac_wayland_protocols_pkgdatadir)
 ], [enable_wayland=no])
 AM_CONDITIONAL([ENABLE_WAYLAND], [test "x$enable_wayland" = xyes])
+
+AC_SUBST(tizen_profile)
+AM_CONDITIONAL(TIZEN_COMMON_PROFILE, test "${tizen_profile}" = "common")
+if test "${tizen_profile}" = "common"; then
+	TIZEN_COMMON_CFLAGS="-D_F_TIZEN_COMMON_PROFILE_"
+	AC_SUBST(TIZEN_COMMON_CFLAGS)
+	CFLAGS+=" ${TIZEN_COMMON_CFLAGS} "
+fi
 
 AC_CONFIG_FILES([
     Makefile

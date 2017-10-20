@@ -6,5 +6,5 @@ includedir=@includedir@
 Name: xkbcommon
 Description: XKB API common to servers and clients
 Version: @PACKAGE_VERSION@
-Cflags: -I${includedir}
+Cflags: -I${includedir} @TIZEN_COMMON_CFLAGS@
 Libs: -L${libdir} -lxkbcommon

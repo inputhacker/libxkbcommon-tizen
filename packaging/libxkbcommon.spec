@@ -15,6 +15,11 @@ BuildRequires:  bison
 BuildRequires:  flex
 BuildRequires:  libtool >= 2
 BuildRequires:  pkgconfig(xorg-macros) >= 1.8
+%if "%{?profile}" == "common"
+%else
+BuildRequires:  python
+BuildRequires:  e-tizen-data
+%endif
 
 %description
 Keyboard handling library using XKB data.
@@ -34,8 +39,18 @@ in %{name}.
 %setup -qn %{name}
 cp %{SOURCE1001} .
 
+# Generate tizen keymap header except common profile
+%if "%{?profile}" == "common"
+%else
+export TIZEN_PROFILE="%{?profile}"
+chmod a+x ./make_tizen_keymap.sh
+./make_tizen_keymap.sh
+chmod a+x ./gen_tables.sh
+./gen_tables.sh
+%endif
+
 %build
-%autogen --disable-static --disable-x11
+%autogen --disable-static --disable-x11 --with-tizen-profile="%{?profile}"
 %__make %{?_smp_mflags} V=1;
 
 %install
