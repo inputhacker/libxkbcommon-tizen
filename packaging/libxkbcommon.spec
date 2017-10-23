@@ -48,7 +48,7 @@ chmod a+x ./gen_tables.sh
 
 %build
 chmod a+x ./autogen.sh
-%autogen --disable-static --disable-x11
+%autogen --disable-static --disable-x11 --disable-docs
 %__make %{?_smp_mflags} V=1;
 
 %install
