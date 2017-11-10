@@ -97,3 +97,8 @@ global:
 	xkb_state_key_get_consumed_mods2;
 	xkb_state_mod_index_is_consumed2;
 } V_0.6.0;
+
+V_0.7.2 {
+global:
+	xkb_keymap_key_set_repeats;
+} V_0.7.0;
